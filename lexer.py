@@ -11,6 +11,8 @@ class SQLLexer:
         'SELECT',
         'FROM',
         'ID',
+        'STAR',
+        'COMMA',
     )
     
     # Reserved words
@@ -22,6 +24,8 @@ class SQLLexer:
     # Regular expression rules for simple tokens
     t_SELECT = r'SELECT'
     t_FROM = r'FROM'
+    t_STAR = r'\*'
+    t_COMMA = r','
     
     # Identifier (table/column names)
     def t_ID(self, t):

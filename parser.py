@@ -26,9 +26,25 @@ class SQLParser:
         p[0] = p[1]
     
     def p_select_stmt(self, p):
-        'select_stmt : SELECT ID FROM ID'
-        # SELECT column FROM table;
-        p[0] = SelectQuery(column=p[2], table=p[4])
+        'select_stmt : SELECT select_list FROM ID'
+        # SELECT columns FROM table;
+        p[0] = SelectQuery(columns=p[2], table=p[4])
+    
+    def p_select_list_star(self, p):
+        'select_list : STAR'
+        p[0] = '*'
+    
+    def p_select_list_column_list(self, p):
+        'select_list : column_list'
+        p[0] = p[1]
+    
+    def p_column_list_single(self, p):
+        'column_list : ID'
+        p[0] = [p[1]]
+    
+    def p_column_list_multiple(self, p):
+        'column_list : column_list COMMA ID'
+        p[0] = p[1] + [p[3]]
     
     # Error handling
     def p_error(self, p):

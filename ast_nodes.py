@@ -6,11 +6,12 @@ class ASTNode:
     pass
 
 class SelectQuery(ASTNode):
-    """Represents a SELECT query: SELECT column FROM table;"""
+    """Represents a SELECT query: SELECT columns FROM table;"""
     
-    def __init__(self, column: str, table: str):
-        self.column = column
+    def __init__(self, columns, table):
+        # columns can be a list of column names or "*" for SELECT *
+        self.columns = columns
         self.table = table
     
     def __repr__(self):
-        return f"SelectQuery(column={self.column!r}, table={self.table!r})"
+        return f"SelectQuery(columns={self.columns!r}, table={self.table!r})"

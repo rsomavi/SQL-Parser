@@ -39,10 +39,10 @@ class QueryExecutor:
             select_node: SelectQuery AST node
             
         Returns:
-            List of values from the requested column
+            List of values from the requested columns, or full rows for SELECT *
         """
         table_name = select_node.table
-        column_name = select_node.column
+        columns = select_node.columns
         
         # Check if table exists
         if table_name not in self.database:
@@ -50,11 +50,18 @@ class QueryExecutor:
         
         table = self.database[table_name]
         
-        # Extract the requested column from each row
+        # Handle SELECT *
+        if columns == '*':
+            return table
+        
+        # Extract the requested columns from each row
         results = []
         for row in table:
-            if column_name not in row:
-                raise ValueError(f"Column '{column_name}' not found in table '{table_name}'")
-            results.append(row[column_name])
+            result_row = {}
+            for column_name in columns:
+                if column_name not in row:
+                    raise ValueError(f"Column '{column_name}' not found in table '{table_name}'")
+                result_row[column_name] = row[column_name]
+            results.append(result_row)
         
         return results

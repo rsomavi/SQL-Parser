@@ -4,18 +4,26 @@ Grammar
 
 Rule 0     S' -> query
 Rule 1     query -> select_stmt
-Rule 2     select_stmt -> SELECT ID FROM ID
+Rule 2     select_stmt -> SELECT select_list FROM ID
+Rule 3     select_list -> STAR
+Rule 4     select_list -> column_list
+Rule 5     column_list -> ID
+Rule 6     column_list -> column_list COMMA ID
 
 Terminals, with rules where they appear
 
+COMMA                : 6
 FROM                 : 2
-ID                   : 2 2
+ID                   : 2 5 6
 SELECT               : 2
+STAR                 : 3
 error                : 
 
 Nonterminals, with rules where they appear
 
+column_list          : 4 6
 query                : 0
+select_list          : 2
 select_stmt          : 1
 
 Parsing method: LALR
@@ -24,7 +32,7 @@ state 0
 
     (0) S' -> . query
     (1) query -> . select_stmt
-    (2) select_stmt -> . SELECT ID FROM ID
+    (2) select_stmt -> . SELECT select_list FROM ID
 
     SELECT          shift and go to state 3
 
@@ -46,28 +54,74 @@ state 2
 
 state 3
 
-    (2) select_stmt -> SELECT . ID FROM ID
+    (2) select_stmt -> SELECT . select_list FROM ID
+    (3) select_list -> . STAR
+    (4) select_list -> . column_list
+    (5) column_list -> . ID
+    (6) column_list -> . column_list COMMA ID
 
-    ID              shift and go to state 4
+    STAR            shift and go to state 6
+    ID              shift and go to state 5
 
+    select_list                    shift and go to state 4
+    column_list                    shift and go to state 7
 
 state 4
 
-    (2) select_stmt -> SELECT ID . FROM ID
+    (2) select_stmt -> SELECT select_list . FROM ID
 
-    FROM            shift and go to state 5
+    FROM            shift and go to state 8
 
 
 state 5
 
-    (2) select_stmt -> SELECT ID FROM . ID
+    (5) column_list -> ID .
 
-    ID              shift and go to state 6
+    COMMA           reduce using rule 5 (column_list -> ID .)
+    FROM            reduce using rule 5 (column_list -> ID .)
 
 
 state 6
 
-    (2) select_stmt -> SELECT ID FROM ID .
+    (3) select_list -> STAR .
 
-    $end            reduce using rule 2 (select_stmt -> SELECT ID FROM ID .)
+    FROM            reduce using rule 3 (select_list -> STAR .)
+
+
+state 7
+
+    (4) select_list -> column_list .
+    (6) column_list -> column_list . COMMA ID
+
+    FROM            reduce using rule 4 (select_list -> column_list .)
+    COMMA           shift and go to state 9
+
+
+state 8
+
+    (2) select_stmt -> SELECT select_list FROM . ID
+
+    ID              shift and go to state 10
+
+
+state 9
+
+    (6) column_list -> column_list COMMA . ID
+
+    ID              shift and go to state 11
+
+
+state 10
+
+    (2) select_stmt -> SELECT select_list FROM ID .
+
+    $end            reduce using rule 2 (select_stmt -> SELECT select_list FROM ID .)
+
+
+state 11
+
+    (6) column_list -> column_list COMMA ID .
+
+    COMMA           reduce using rule 6 (column_list -> column_list COMMA ID .)
+    FROM            reduce using rule 6 (column_list -> column_list COMMA ID .)
 
