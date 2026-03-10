@@ -1,6 +1,9 @@
 # SQL Storage Layer
 # Provides abstraction for data storage (in-memory for now)
 
+from table import Table
+
+
 class MemoryStorage:
     """In-memory storage implementation."""
     
@@ -12,7 +15,11 @@ class MemoryStorage:
             database: Dict mapping table names to list of rows.
                      Example: {"users": [{"name": "Juan"}, {"name": "Ana"}]}
         """
-        self.database = database
+        # Convert raw lists to Table objects
+        self.database = {
+            name: Table(name, rows)
+            for name, rows in database.items()
+        }
     
     def load_table(self, table_name: str):
         """

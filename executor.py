@@ -46,20 +46,21 @@ class QueryExecutor:
         
         # Load table from storage
         table = self.storage.load_table(table_name)
+        rows = table.get_rows()
         
         # Filter rows based on WHERE condition
         if where is not None:
             def matches(row):
                 return self._evaluate_condition(row, where)
-            table = [row for row in table if matches(row)]
+            rows = [row for row in rows if matches(row)]
         
         # Handle SELECT *
         if columns == '*':
-            return [row.copy() for row in table]
+            return [row.copy() for row in rows]
         
         # Extract the requested columns from each row
         results = []
-        for row in table:
+        for row in rows:
             result_row = {}
             for column_name in columns:
                 if column_name not in row:
