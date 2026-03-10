@@ -1,5 +1,6 @@
 from parser import get_parser
 from executor import QueryExecutor
+from storage import MemoryStorage
 
 
 def main():
@@ -28,7 +29,6 @@ def main():
         "SELECT * FROM products",
         "SELECT name FROM users WHERE age = 25",
         "SELECT name, city FROM users WHERE age = 30",
-        "SELECT name, city FROM users WHERE age = 30",
         "SELECT * FROM users WHERE age = 28",
         'SELECT name, city FROM users WHERE name = "Ana"',
         "SELECT name, age FROM users WHERE age > 25",
@@ -51,9 +51,10 @@ def main():
         'SELECT name FROM products WHERE price = 100 OR price = 1200'
     ]
 
-    # Create parser and executor
+    # Create parser, storage, and executor
     parser = get_parser()
-    executor = QueryExecutor(database)
+    storage = MemoryStorage(database)
+    executor = QueryExecutor(storage)
 
     # Execute each query
     for query in queries:

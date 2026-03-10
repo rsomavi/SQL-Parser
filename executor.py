@@ -1,20 +1,19 @@
 # SQL Executor - Query Execution Layer
-# Executes AST nodes against an in-memory database
+# Executes AST nodes against a storage backend
 
 from ast_nodes import SelectQuery, Condition, LogicalCondition
 
 class QueryExecutor:
     """Minimal executor for SQL queries"""
     
-    def __init__(self, database: dict):
+    def __init__(self, storage):
         """
-        Initialize executor with in-memory database.
+        Initialize executor with a storage object.
         
         Args:
-            database: Dict mapping table names to list of rows.
-                     Example: {"users": [{"name": "Juan"}, {"name": "Ana"}]}
+            storage: Storage object with load_table method.
         """
-        self.database = database
+        self.storage = storage
     
     def execute(self, ast):
         """
@@ -45,11 +44,8 @@ class QueryExecutor:
         columns = select_node.columns
         where = select_node.where
         
-        # Check if table exists
-        if table_name not in self.database:
-            raise ValueError(f"Table not found: {table_name}")
-        
-        table = self.database[table_name]
+        # Load table from storage
+        table = self.storage.load_table(table_name)
         
         # Filter rows based on WHERE condition
         if where is not None:
@@ -59,7 +55,7 @@ class QueryExecutor:
         
         # Handle SELECT *
         if columns == '*':
-            return table
+            return [row.copy() for row in table]
         
         # Extract the requested columns from each row
         results = []
