@@ -2,6 +2,7 @@
 # Tokenizes SQL queries using PLY
 
 import ply.lex as lex
+import re
 
 class SQLLexer:
     """SQL Lexer that tokenizes SQL queries"""
@@ -40,11 +41,12 @@ class SQLLexer:
     
     # Regular expression rules for simple tokens
     # Note: GE and LE must be defined before GT and LT to avoid incorrect matching
-    t_SELECT = r'SELECT'
-    t_FROM = r'FROM'
-    t_WHERE = r'WHERE'
-    t_ORDER = r'ORDER'
-    t_BY = r'BY'
+    # Using (?i) flag makes patterns case-insensitive
+    t_SELECT = r'(?i)SELECT'
+    t_FROM = r'(?i)FROM'
+    t_WHERE = r'(?i)WHERE'
+    t_ORDER = r'(?i)ORDER'
+    t_BY = r'(?i)BY'
     t_STAR = r'\*'
     t_COMMA = r','
     t_EQUAL = r'='
@@ -52,8 +54,8 @@ class SQLLexer:
     t_LE = r'<='
     t_GT = r'>'
     t_LT = r'<'
-    t_AND = r'AND'
-    t_OR = r'OR'
+    t_AND = r'(?i)AND'
+    t_OR = r'(?i)OR'
     
     # Number (integer)
     def t_NUMBER(self, t):
@@ -70,7 +72,9 @@ class SQLLexer:
     # Identifier (table/column names)
     def t_ID(self, t):
         r'[a-zA-Z_][a-zA-Z0-9_]*'
-        t.type = self.reserved.get(t.value, 'ID')  # Check for reserved words
+        # Convert to uppercase for reserved words, lowercase for IDs
+        t.value = t.value.lower()
+        t.type = self.reserved.get(t.value.upper(), 'ID')  # Check for reserved words
         return t
     
     # Ignore whitespace

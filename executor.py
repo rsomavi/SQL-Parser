@@ -54,8 +54,19 @@ class QueryExecutor:
         # Filter rows based on WHERE condition
         if where is not None:
             def matches(row):
-                return self._evaluate_condition(row, where)
+                return self._evaluate_condition(row, where, table_name)
             rows = [row for row in rows if matches(row)]
+        
+        # Validate ORDER BY column exists
+        if order_by is not None:
+            # Check if order_by column exists in any row (use first row as reference)
+            if rows:
+                if order_by not in rows[0]:
+                    raise ValueError(f"Column '{order_by}' not found in table '{table_name}'")
+            else:
+                # If no rows, check against table schema if available
+                # For now, we'll skip validation if table is empty
+                pass
         
         # Sort rows based on ORDER BY column
         if order_by is not None:
@@ -77,12 +88,12 @@ class QueryExecutor:
         
         return results
     
-    def _evaluate_condition(self, row, condition):
+    def _evaluate_condition(self, row, condition, table_name):
         """Recursively evaluate a condition (simple or logical)."""
         if isinstance(condition, Condition):
             col_value = row.get(condition.column)
             if col_value is None:
-                return False
+                raise ValueError(f"Column '{condition.column}' not found in table '{table_name}'")
             op = condition.operator
             value = condition.value
             if op == '=':
@@ -98,11 +109,12 @@ class QueryExecutor:
             else:
                 raise ValueError(f"Unknown operator: {op}")
         elif isinstance(condition, LogicalCondition):
-            left_result = self._evaluate_condition(row, condition.left)
-            right_result = self._evaluate_condition(row, condition.right)
-            if condition.operator == 'AND':
+            left_result = self._evaluate_condition(row, condition.left, table_name)
+            right_result = self._evaluate_condition(row, condition.right, table_name)
+            op = condition.operator.upper()
+            if op == 'AND':
                 return left_result and right_result
-            elif condition.operator == 'OR':
+            elif op == 'OR':
                 return left_result or right_result
             else:
                 raise ValueError(f"Unknown logical operator: {condition.operator}")
