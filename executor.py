@@ -42,6 +42,75 @@ class QueryExecutor:
         else:
             raise ValueError(f"Unsupported plan: {type(plan).__name__}")
     
+    # =========================================================================
+    # Helper: Common table loading and WHERE filtering
+    # =========================================================================
+    
+    def _get_filtered_rows(self, table_name, where):
+        """
+        Load table and optionally filter by WHERE condition.
+        
+        Args:
+            table_name: Name of the table
+            where: Optional WHERE condition (Condition, LogicalCondition, NotCondition)
+            
+        Returns:
+            List of filtered rows
+        """
+        table = self.storage.load_table(table_name)
+        rows = table.get_rows()
+        
+        if where is not None:
+            def matches(row):
+                return self._evaluate_condition(row, where, table_name)
+            rows = [row for row in rows if matches(row)]
+        
+        return rows
+    
+    # =========================================================================
+    # Condition evaluation
+    # =========================================================================
+    
+    def _evaluate_condition(self, row, condition, table_name):
+        """Recursively evaluate a condition (simple or logical)."""
+        if isinstance(condition, Condition):
+            if condition.column not in row:
+                raise ValueError(f"Column '{condition.column}' not found in table '{table_name}'")
+            col_value = row[condition.column]
+            op = condition.operator
+            value = condition.value
+            if op == '=':
+                return col_value == value
+            elif op == '>':
+                return col_value > value
+            elif op == '<':
+                return col_value < value
+            elif op == '>=':
+                return col_value >= value
+            elif op == '<=':
+                return col_value <= value
+            else:
+                raise ValueError(f"Unknown operator: {op}")
+            
+        elif isinstance(condition, LogicalCondition):
+            left_result = self._evaluate_condition(row, condition.left, table_name)
+            right_result = self._evaluate_condition(row, condition.right, table_name)
+            op = condition.operator.upper()
+            if op == 'AND':
+                return left_result and right_result
+            elif op == 'OR':
+                return left_result or right_result
+            else:
+                raise ValueError(f"Unknown logical operator: {condition.operator}")
+        elif isinstance(condition, NotCondition):
+            return not self._evaluate_condition(row, condition.condition, table_name)
+        else:
+            raise ValueError(f"Unknown condition type: {type(condition).__name__}")
+    
+    # =========================================================================
+    # SELECT execution and helpers
+    # =========================================================================
+    
     def _execute_select(self, plan: SelectPlan):
         """
         Execute a SELECT query plan.
@@ -52,56 +121,60 @@ class QueryExecutor:
         Returns:
             List of values from the requested columns, or full rows for SELECT *
         """
-        table_name = plan.table
-        columns = plan.columns
-        where = plan.where
-        order_by = plan.order_by
-        limit = plan.limit
+        # Load and filter rows
+        rows = self._get_filtered_rows(plan.table, plan.where)
+        
+        # Apply transformations in order
+        rows = self._apply_distinct(rows, plan)
+        rows = self._apply_order_by(rows, plan)
+        rows = self._apply_limit(rows, plan)
+        
+        return self._apply_projection(rows, plan)
+    
+    def _apply_distinct(self, rows, plan: SelectPlan):
+        """Apply DISTINCT to rows if specified."""
         distinct = getattr(plan, 'distinct', False)
+        if not distinct:
+            return rows
         
-        # Load table from storage
-        table = self.storage.load_table(table_name)
-        rows = table.get_rows()
-        
-        # Filter rows based on WHERE condition
-        if where is not None:
-            def matches(row):
-                return self._evaluate_condition(row, where, table_name)
-            rows = [row for row in rows if matches(row)]
-        
-        # Apply DISTINCT
-        if distinct:
-            seen = set()
-            unique_rows = []
-            for row in rows:
-                # Create key from all column values
-                if columns == '*':
-                    key = tuple(sorted(row.items()))
-                else:
-                    key = tuple(row.get(col) for col in columns)
-                if key not in seen:
-                    seen.add(key)
-                    unique_rows.append(row)
-            rows = unique_rows
+        columns = plan.columns
+        seen = set()
+        unique_rows = []
+        for row in rows:
+            # Create key from all column values
+            if columns == '*':
+                key = tuple(sorted(row.items()))
+            else:
+                key = tuple(row.get(col) for col in columns)
+            if key not in seen:
+                seen.add(key)
+                unique_rows.append(row)
+        return unique_rows
+    
+    def _apply_order_by(self, rows, plan: SelectPlan):
+        """Apply ORDER BY to rows if specified."""
+        order_by = plan.order_by
+        if order_by is None:
+            return rows
         
         # Validate ORDER BY column exists
-        if order_by is not None:
-            # Check if order_by column exists in any row (use first row as reference)
-            if rows:
-                if order_by not in rows[0]:
-                    raise ValueError(f"Column '{order_by}' not found in table '{table_name}'")
-            else:
-                # If no rows, check against table schema if available
-                # For now, we'll skip validation if table is empty
-                pass
+        if rows:
+            if order_by not in rows[0]:
+                raise ValueError(f"Column '{order_by}' not found in table '{plan.table}'")
         
-        # Sort rows based on ORDER BY column
-        if order_by is not None:
-            rows = sorted(rows, key=lambda r: r[order_by])
-        
-        # Apply LIMIT
-        if limit is not None:
-            rows = rows[:limit]
+        return sorted(rows, key=lambda r: r[order_by])
+    
+    def _apply_limit(self, rows, plan: SelectPlan):
+        """Apply LIMIT to rows if specified."""
+        limit = plan.limit
+        if limit is None:
+            return rows
+        return rows[:limit]
+    
+    def _apply_projection(self, rows, plan: SelectPlan):
+        """Apply column projection (SELECT columns)."""
+        columns = plan.columns
+        table_name = plan.table
         
         # Handle SELECT *
         if columns == '*':
@@ -119,40 +192,9 @@ class QueryExecutor:
         
         return results
     
-    def _evaluate_condition(self, row, condition, table_name):
-        """Recursively evaluate a condition (simple or logical)."""
-        if isinstance(condition, Condition):
-            col_value = row.get(condition.column)
-            if col_value is None:
-                raise ValueError(f"Column '{condition.column}' not found in table '{table_name}'")
-            op = condition.operator
-            value = condition.value
-            if op == '=':
-                return col_value == value
-            elif op == '>':
-                return col_value > value
-            elif op == '<':
-                return col_value < value
-            elif op == '>=':
-                return col_value >= value
-            elif op == '<=':
-                return col_value <= value
-            else:
-                raise ValueError(f"Unknown operator: {op}")
-        elif isinstance(condition, LogicalCondition):
-            left_result = self._evaluate_condition(row, condition.left, table_name)
-            right_result = self._evaluate_condition(row, condition.right, table_name)
-            op = condition.operator.upper()
-            if op == 'AND':
-                return left_result and right_result
-            elif op == 'OR':
-                return left_result or right_result
-            else:
-                raise ValueError(f"Unknown logical operator: {condition.operator}")
-        elif isinstance(condition, NotCondition):
-            return not self._evaluate_condition(row, condition.condition, table_name)
-        else:
-            raise ValueError(f"Unknown condition type: {type(condition).__name__}")
+    # =========================================================================
+    # Aggregation execution
+    # =========================================================================
     
     def _execute_count(self, plan: CountPlan):
         """
@@ -164,19 +206,7 @@ class QueryExecutor:
         Returns:
             Integer count of rows
         """
-        table_name = plan.table
-        where = plan.where
-        
-        # Load table from storage
-        table = self.storage.load_table(table_name)
-        rows = table.get_rows()
-        
-        # Filter rows based on WHERE condition
-        if where is not None:
-            def matches(row):
-                return self._evaluate_condition(row, where, table_name)
-            rows = [row for row in rows if matches(row)]
-        
+        rows = self._get_filtered_rows(plan.table, plan.where)
         return len(rows)
     
     def _execute_sum(self, plan: SumPlan):
@@ -189,26 +219,13 @@ class QueryExecutor:
         Returns:
             Sum of column values
         """
-        table_name = plan.table
-        column = plan.column
-        where = plan.where
+        rows = self._get_filtered_rows(plan.table, plan.where)
         
-        # Load table from storage
-        table = self.storage.load_table(table_name)
-        rows = table.get_rows()
-        
-        # Filter rows based on WHERE condition
-        if where is not None:
-            def matches(row):
-                return self._evaluate_condition(row, where, table_name)
-            rows = [row for row in rows if matches(row)]
-        
-        # Calculate sum
         total = 0
         for row in rows:
-            if column not in row:
-                raise ValueError(f"Column '{column}' not found in table '{table_name}'")
-            total += row[column]
+            if plan.column not in row:
+                raise ValueError(f"Column '{plan.column}' not found in table '{plan.table}'")
+            total += row[plan.column]
         
         return total
     
@@ -222,31 +239,18 @@ class QueryExecutor:
         Returns:
             Average of column values
         """
-        table_name = plan.table
-        column = plan.column
-        where = plan.where
+        rows = self._get_filtered_rows(plan.table, plan.where)
         
-        # Load table from storage
-        table = self.storage.load_table(table_name)
-        rows = table.get_rows()
-        
-        # Filter rows based on WHERE condition
-        if where is not None:
-            def matches(row):
-                return self._evaluate_condition(row, where, table_name)
-            rows = [row for row in rows if matches(row)]
-        
-        # Calculate average
-        values = []
-        for row in rows:
-            if column not in row:
-                raise ValueError(f"Column '{column}' not found in table '{table_name}'")
-            values.append(row[column])
-        
-        if len(values) == 0:
+        if not rows:
             return 0
         
-        return sum(values) / len(values)
+        total = 0
+        for row in rows:
+            if plan.column not in row:
+                raise ValueError(f"Column '{plan.column}' not found in table '{plan.table}'")
+            total += row[plan.column]
+        
+        return total / len(rows)
     
     def _execute_min(self, plan: MinPlan):
         """
@@ -258,31 +262,20 @@ class QueryExecutor:
         Returns:
             Minimum value of column
         """
-        table_name = plan.table
-        column = plan.column
-        where = plan.where
+        rows = self._get_filtered_rows(plan.table, plan.where)
         
-        # Load table from storage
-        table = self.storage.load_table(table_name)
-        rows = table.get_rows()
-        
-        # Filter rows based on WHERE condition
-        if where is not None:
-            def matches(row):
-                return self._evaluate_condition(row, where, table_name)
-            rows = [row for row in rows if matches(row)]
-        
-        # Find minimum value
-        values = []
-        for row in rows:
-            if column not in row:
-                raise ValueError(f"Column '{column}' not found in table '{table_name}'")
-            values.append(row[column])
-        
-        if len(values) == 0:
+        if not rows:
             return 0
         
-        return min(values)
+        min_value = None
+        for row in rows:
+            if plan.column not in row:
+                raise ValueError(f"Column '{plan.column}' not found in table '{plan.table}'")
+            value = row[plan.column]
+            if min_value is None or value < min_value:
+                min_value = value
+        
+        return min_value
     
     def _execute_max(self, plan: MaxPlan):
         """
@@ -294,28 +287,17 @@ class QueryExecutor:
         Returns:
             Maximum value of column
         """
-        table_name = plan.table
-        column = plan.column
-        where = plan.where
+        rows = self._get_filtered_rows(plan.table, plan.where)
         
-        # Load table from storage
-        table = self.storage.load_table(table_name)
-        rows = table.get_rows()
-        
-        # Filter rows based on WHERE condition
-        if where is not None:
-            def matches(row):
-                return self._evaluate_condition(row, where, table_name)
-            rows = [row for row in rows if matches(row)]
-        
-        # Find maximum value
-        values = []
-        for row in rows:
-            if column not in row:
-                raise ValueError(f"Column '{column}' not found in table '{table_name}'")
-            values.append(row[column])
-        
-        if len(values) == 0:
+        if not rows:
             return 0
         
-        return max(values)
+        max_value = None
+        for row in rows:
+            if plan.column not in row:
+                raise ValueError(f"Column '{plan.column}' not found in table '{plan.table}'")
+            value = row[plan.column]
+            if max_value is None or value > max_value:
+                max_value = value
+        
+        return max_value
