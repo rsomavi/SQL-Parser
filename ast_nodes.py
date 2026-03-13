@@ -46,6 +46,28 @@ class CountQuery(ASTNode):
     def __repr__(self):
         return f"CountQuery(table={self.table!r}, where={self.where!r})"
 
+class SumQuery(ASTNode):
+    """Represents a SUM(column) query: SELECT SUM(column) FROM table [WHERE condition]"""
+    
+    def __init__(self, column, table, where=None):
+        self.column = column
+        self.table = table
+        self.where = where  # Optional Condition
+    
+    def __repr__(self):
+        return f"SumQuery(column={self.column!r}, table={self.table!r}, where={self.where!r})"
+
+class AvgQuery(ASTNode):
+    """Represents a AVG(column) query: SELECT AVG(column) FROM table [WHERE condition]"""
+    
+    def __init__(self, column, table, where=None):
+        self.column = column
+        self.table = table
+        self.where = where  # Optional Condition
+    
+    def __repr__(self):
+        return f"AvgQuery(column={self.column!r}, table={self.table!r}, where={self.where!r})"
+
 class SelectQuery(ASTNode):
     """Represents a SELECT query: SELECT [DISTINCT] columns FROM table [WHERE condition] [ORDER BY column] [LIMIT number];"""
     

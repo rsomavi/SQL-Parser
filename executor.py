@@ -2,7 +2,7 @@
 # Executes query plans against a storage backend
 
 from ast_nodes import Condition, LogicalCondition, NotCondition
-from planner import SelectPlan, CountPlan
+from planner import SelectPlan, CountPlan, SumPlan, AvgPlan
 
 
 class QueryExecutor:
@@ -31,6 +31,10 @@ class QueryExecutor:
             return self._execute_select(plan)
         elif isinstance(plan, CountPlan):
             return self._execute_count(plan)
+        elif isinstance(plan, SumPlan):
+            return self._execute_sum(plan)
+        elif isinstance(plan, AvgPlan):
+            return self._execute_avg(plan)
         else:
             raise ValueError(f"Unsupported plan: {type(plan).__name__}")
     
@@ -170,3 +174,72 @@ class QueryExecutor:
             rows = [row for row in rows if matches(row)]
         
         return len(rows)
+    
+    def _execute_sum(self, plan: SumPlan):
+        """
+        Execute a SUM(column) query plan.
+        
+        Args:
+            plan: SumPlan object
+            
+        Returns:
+            Sum of column values
+        """
+        table_name = plan.table
+        column = plan.column
+        where = plan.where
+        
+        # Load table from storage
+        table = self.storage.load_table(table_name)
+        rows = table.get_rows()
+        
+        # Filter rows based on WHERE condition
+        if where is not None:
+            def matches(row):
+                return self._evaluate_condition(row, where, table_name)
+            rows = [row for row in rows if matches(row)]
+        
+        # Calculate sum
+        total = 0
+        for row in rows:
+            if column not in row:
+                raise ValueError(f"Column '{column}' not found in table '{table_name}'")
+            total += row[column]
+        
+        return total
+    
+    def _execute_avg(self, plan: AvgPlan):
+        """
+        Execute a AVG(column) query plan.
+        
+        Args:
+            plan: AvgPlan object
+            
+        Returns:
+            Average of column values
+        """
+        table_name = plan.table
+        column = plan.column
+        where = plan.where
+        
+        # Load table from storage
+        table = self.storage.load_table(table_name)
+        rows = table.get_rows()
+        
+        # Filter rows based on WHERE condition
+        if where is not None:
+            def matches(row):
+                return self._evaluate_condition(row, where, table_name)
+            rows = [row for row in rows if matches(row)]
+        
+        # Calculate average
+        values = []
+        for row in rows:
+            if column not in row:
+                raise ValueError(f"Column '{column}' not found in table '{table_name}'")
+            values.append(row[column])
+        
+        if len(values) == 0:
+            return 0
+        
+        return sum(values) / len(values)

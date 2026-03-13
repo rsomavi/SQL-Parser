@@ -16,6 +16,8 @@ class SQLLexer:
         'BY',
         'LIMIT',
         'COUNT',
+        'SUM',
+        'AVG',
         'DISTINCT',
         'ID',
         'STAR',
@@ -43,6 +45,8 @@ class SQLLexer:
         'BY': 'BY',
         'LIMIT': 'LIMIT',
         'COUNT': 'COUNT',
+        'SUM': 'SUM',
+        'AVG': 'AVG',
         'DISTINCT': 'DISTINCT',
         'AND': 'AND',
         'OR': 'OR',
@@ -59,6 +63,8 @@ class SQLLexer:
     t_BY = r'(?i)BY'
     t_LIMIT = r'(?i)LIMIT'
     t_COUNT = r'(?i)COUNT'
+    t_SUM = r'(?i)SUM'
+    t_AVG = r'(?i)AVG'
     t_DISTINCT = r'(?i)DISTINCT'
     t_STAR = r'\*'
     t_LPAREN = r'\('

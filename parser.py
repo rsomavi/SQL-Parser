@@ -3,7 +3,7 @@
 
 import ply.yacc as yacc
 from lexer import SQLLexer
-from ast_nodes import SelectQuery, Condition, LogicalCondition, NotCondition, CountQuery
+from ast_nodes import SelectQuery, Condition, LogicalCondition, NotCondition, CountQuery, SumQuery, AvgQuery
 
 class SQLParser:
     """SQL Parser that builds AST from tokens"""
@@ -46,6 +46,16 @@ class SQLParser:
         'select_stmt : SELECT COUNT LPAREN STAR RPAREN FROM ID optional_where'
         # SELECT COUNT(*) FROM table [WHERE condition];
         p[0] = CountQuery(table=p[7], where=p[8] if p[8] else None)
+    
+    def p_select_stmt_sum(self, p):
+        'select_stmt : SELECT SUM LPAREN ID RPAREN FROM ID optional_where'
+        # SELECT SUM(column) FROM table [WHERE condition];
+        p[0] = SumQuery(column=p[4], table=p[7], where=p[8] if p[8] else None)
+    
+    def p_select_stmt_avg(self, p):
+        'select_stmt : SELECT AVG LPAREN ID RPAREN FROM ID optional_where'
+        # SELECT AVG(column) FROM table [WHERE condition];
+        p[0] = AvgQuery(column=p[4], table=p[7], where=p[8] if p[8] else None)
     
     def p_optional_where(self, p):
         'optional_where : WHERE condition'
