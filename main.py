@@ -2,6 +2,8 @@ from parser import get_parser
 from planner import QueryPlanner
 from executor import QueryExecutor
 from storage import MemoryStorage
+from ast_printer import print_ast
+from ui import get_tokens, create_simple_dashboard
 
 
 def main():
@@ -60,7 +62,7 @@ def main():
 
     # Print welcome message
     print("\033[H\033[2J", end="")
-    print("MiniSQL Engine")
+    print("MiniSQL Engine with Rich Dashboard")
     print("Type 'exit' to quit\n")
 
     # REPL loop
@@ -77,32 +79,44 @@ def main():
             # Generate AST
             ast = parser.parse(query)
             if ast is None:
-                print("ERROR: invalid SQL syntax")
+                create_simple_dashboard(query, None, [], None, "ERROR: invalid SQL syntax")
                 continue
+            
+            # Get tokens
+            tokens = get_tokens(query)
             
             # Create query plan
             plan = planner.plan(ast)
             
             # Execute query
             result = executor.execute(plan)
-            print(f"Result: {result}")
+            
+            # Display dashboard
+            create_simple_dashboard(query, ast, tokens, result)
+            
         except ValueError as e:
             error_msg = str(e)
             if "Table not found" in error_msg:
                 table_name = error_msg.split(":")[-1].strip()
-                print(f"ERROR: table '{table_name}' does not exist")
+                error_msg = f"ERROR: table '{table_name}' does not exist"
             elif "Column" in error_msg and "not found" in error_msg:
                 import re
                 match = re.search(r"Column '(\w+)'", error_msg)
                 if match:
                     col_name = match.group(1)
-                    print(f"ERROR: column '{col_name}' does not exist")
+                    error_msg = f"ERROR: column '{col_name}' does not exist"
                 else:
-                    print("ERROR: query execution failed")
+                    error_msg = "ERROR: query execution failed"
             else:
-                print("ERROR: query execution failed")
+                error_msg = f"ERROR: {error_msg}"
+            
+            # Get tokens even for error case
+            tokens = get_tokens(query)
+            create_simple_dashboard(query, ast, tokens, None, error_msg)
+            
         except Exception:
-            print("ERROR: invalid SQL syntax")
+            tokens = get_tokens(query)
+            create_simple_dashboard(query, ast, tokens, None, "ERROR: invalid SQL syntax")
 
 
 if __name__ == "__main__":
