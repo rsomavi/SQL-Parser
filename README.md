@@ -128,21 +128,28 @@ from planner import QueryPlanner
 from executor import QueryExecutor
 from storage import MemoryStorage
 
+# Example database
+database = {
+    "users": [
+        {"id": 1, "name": "Juan", "age": 25, "city": "Madrid"},
+        {"id": 2, "name": "Ana", "age": 30, "city": "Barcelona"},
+    ]
+}
+
 # Initialize components
-storage = Storage()
-lexer = Lexer()
-parser = Parser()
-planner = Planner()
-executor = Executor(storage)
+parser = get_parser()
+planner = QueryPlanner()
+storage = MemoryStorage(database)
+executor = QueryExecutor(storage)
 
-# Execute a query
-query = "SELECT name FROM users WHERE age > 21"
-tokens = lexer.tokenize(query)
-ast = parser.parse(tokens)
+# Execute query
+query = "SELECT name FROM users WHERE age > 20"
+
+ast = parser.parse(query)
 plan = planner.plan(ast)
-results = executor.execute(plan)
+result = executor.execute(plan)
 
-for row in results:
+for row in result:
     print(row)
 ```
 
