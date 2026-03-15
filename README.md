@@ -1,4 +1,4 @@
-# SQL-Parser
+# Mini SQL Engine
 
 A minimal SQL parser and execution engine written in Python. It implements a simplified SQL query pipeline similar to real database engines, featuring a lexer, parser, query planner, and in-memory storage.
 
@@ -72,31 +72,33 @@ Executor → Results
 ### Basic SELECT
 
 ```sql
-SELECT name, age FROM users WHERE age > 25;
+SELECT name, age FROM users WHERE age > 25
 ```
 
 ### GROUP BY with HAVING
 
 ```sql
-SELECT city, COUNT(*) FROM users GROUP BY city HAVING COUNT(*) > 2 ORDER BY COUNT(*) LIMIT 2;
+SELECT city, COUNT(*) FROM users GROUP BY city HAVING COUNT(*) > 2 ORDER BY COUNT(*) LIMIT 2
 ```
 
 ### Aggregate Functions
 
 ```sql
-SELECT department, AVG(salary) AS avg_salary, MIN(salary) AS min_salary, MAX(salary) AS max_salary, COUNT(*) AS employee_count FROM employees GROUP BY department HAVING AVG(salary) > 50000 ORDER BY avg_salary DESC;
+SELECT city, COUNT(*)  FROM users  GROUP BY city;
+```
+```sql
+SELECT city, AVG(age) FROM users GROUP BY city
 ```
 
 ### DISTINCT and LIMIT
 
 ```sql
-SELECT DISTINCT category FROM products LIMIT 10;
+SELECT DISTINCT city FROM users LIMIT 3;
 ```
 
-### Complex WHERE with AND/OR
-
+### Complex query
 ```sql
-SELECT * FROM orders WHERE status = 'pending' AND (total > 100 OR priority = 'high') ORDER BY created_at DESC LIMIT 5;
+SELECT city, COUNT(*) FROM users WHERE age > 25 AND city = 'Madrid' OR age > 30 GROUP BY city HAVING COUNT(*) > 1 ORDER BY COUNT(*) LIMIT 3
 ```
 
 ## Running the Project
@@ -121,27 +123,33 @@ python main.py
 ### Programmatic Usage
 
 ```python
-from lexer import Lexer
-from parser import Parser
-from planner import Planner
-from executor import Executor
-from storage import Storage
+from parser import get_parser
+from planner import QueryPlanner
+from executor import QueryExecutor
+from storage import MemoryStorage
+
+# Example database
+database = {
+    "users": [
+        {"id": 1, "name": "Juan", "age": 25, "city": "Madrid"},
+        {"id": 2, "name": "Ana", "age": 30, "city": "Barcelona"},
+    ]
+}
 
 # Initialize components
-storage = Storage()
-lexer = Lexer()
-parser = Parser()
-planner = Planner()
-executor = Executor(storage)
+parser = get_parser()
+planner = QueryPlanner()
+storage = MemoryStorage(database)
+executor = QueryExecutor(storage)
 
-# Execute a query
-query = "SELECT name FROM users WHERE age > 21"
-tokens = lexer.tokenize(query)
-ast = parser.parse(tokens)
+# Execute query
+query = "SELECT name FROM users WHERE age > 20"
+
+ast = parser.parse(query)
 plan = planner.plan(ast)
-results = executor.execute(plan)
+result = executor.execute(plan)
 
-for row in results:
+for row in result:
     print(row)
 ```
 
@@ -163,7 +171,7 @@ python tests/test_having.py
 ## Project Structure
 
 ```
-SQL-Parser/
+mini-sql-engine/
 ├── lexer.py           # SQL tokenizer
 ├── parser.py          # PLY-based SQL parser
 ├── planner.py         # Query planning
