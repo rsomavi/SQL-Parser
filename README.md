@@ -1,4 +1,4 @@
-# SQL-Parser
+# # Mini SQL Engine
 
 A minimal SQL parser and execution engine written in Python. It implements a simplified SQL query pipeline similar to real database engines, featuring a lexer, parser, query planner, and in-memory storage.
 
@@ -121,11 +121,10 @@ python main.py
 ### Programmatic Usage
 
 ```python
-from lexer import Lexer
-from parser import Parser
-from planner import Planner
-from executor import Executor
-from storage import Storage
+from parser import get_parser
+from planner import QueryPlanner
+from executor import QueryExecutor
+from storage import MemoryStorage
 
 # Initialize components
 storage = Storage()
@@ -163,7 +162,7 @@ python tests/test_having.py
 ## Project Structure
 
 ```
-SQL-Parser/
+mini-sql-engine/
 ├── lexer.py           # SQL tokenizer
 ├── parser.py          # PLY-based SQL parser
 ├── planner.py         # Query planning
