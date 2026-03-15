@@ -22,6 +22,7 @@ class SQLLexer:
         'MAX',
         'DISTINCT',
         'GROUP',
+        'HAVING',
         'ID',
         'STAR',
         'COMMA',
@@ -54,6 +55,7 @@ class SQLLexer:
         'MAX': 'MAX',
         'DISTINCT': 'DISTINCT',
         'GROUP': 'GROUP',
+        'HAVING': 'HAVING',
         'AND': 'AND',
         'OR': 'OR',
         'NOT': 'NOT',
@@ -75,6 +77,7 @@ class SQLLexer:
     t_MAX = r'(?i)MAX'
     t_DISTINCT = r'(?i)DISTINCT'
     t_GROUP = r'(?i)GROUP'
+    t_HAVING = r'(?i)HAVING'
     t_STAR = r'\*'
     t_LPAREN = r'\('
     t_RPAREN = r'\)'

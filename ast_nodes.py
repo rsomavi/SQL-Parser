@@ -96,9 +96,9 @@ class MaxQuery(ASTNode):
         return f"MaxQuery(column={self.column!r}, table={self.table!r}, where={self.where!r}, group_by={self.group_by!r})"
 
 class SelectQuery(ASTNode):
-    """Represents a SELECT query: SELECT [DISTINCT] columns FROM table [WHERE condition] [GROUP BY column] [ORDER BY column] [LIMIT number];"""
+    """Represents a SELECT query: SELECT [DISTINCT] columns FROM table [WHERE condition] [GROUP BY column] [HAVING condition] [ORDER BY column] [LIMIT number];"""
     
-    def __init__(self, columns, table, where=None, order_by=None, limit=None, distinct=False, group_by=None):
+    def __init__(self, columns, table, where=None, order_by=None, limit=None, distinct=False, group_by=None, having=None):
         # columns can be a list of column names, "*" for SELECT *, or "COUNT" for COUNT(*)
         self.columns = columns
         self.table = table
@@ -107,6 +107,7 @@ class SelectQuery(ASTNode):
         self.limit = limit  # Optional limit value
         self.distinct = distinct  # Whether DISTINCT is specified
         self.group_by = group_by  # Optional group by column
+        self.having = having  # Optional HAVING condition
     
     def __repr__(self):
         return f"SelectQuery(columns={self.columns!r}, table={self.table!r}, where={self.where!r}, order_by={self.order_by!r}, limit={self.limit!r}, distinct={self.distinct!r}, group_by={self.group_by!r})"

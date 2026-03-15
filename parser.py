@@ -33,15 +33,16 @@ class SQLParser:
         p[0] = p[1]
     
     def p_select_stmt(self, p):
-        'select_stmt : SELECT optional_distinct select_list FROM ID optional_where optional_group optional_order optional_limit'
-        # SELECT [DISTINCT] columns FROM table [WHERE condition] [GROUP BY column] [ORDER BY column] [LIMIT number];
-        # p[1]=SELECT, p[2]=optional_distinct, p[3]=select_list, p[4]=FROM, p[5]=ID, p[6]=optional_where, p[7]=optional_group, p[8]=optional_order, p[9]=optional_limit
+        'select_stmt : SELECT optional_distinct select_list FROM ID optional_where optional_group optional_having optional_order optional_limit'
+        # SELECT [DISTINCT] columns FROM table [WHERE condition] [GROUP BY column] [HAVING condition] [ORDER BY column] [LIMIT number];
+        # p[1]=SELECT, p[2]=optional_distinct, p[3]=select_list, p[4]=FROM, p[5]=ID, p[6]=optional_where, p[7]=optional_group, p[8]=optional_having, p[9]=optional_order, p[10]=optional_limit
         where_clause = p[6] if p[6] else None
         group_clause = p[7] if p[7] else None
-        order_clause = p[8] if p[8] else None
-        limit_clause = p[9] if p[9] else None
+        having_clause = p[8] if p[8] else None
+        order_clause = p[9] if p[9] else None
+        limit_clause = p[10] if p[10] else None
         distinct_flag = p[2] if p[2] else False
-        p[0] = SelectQuery(columns=p[3], table=p[5], where=where_clause, order_by=order_clause, limit=limit_clause, distinct=distinct_flag, group_by=group_clause)
+        p[0] = SelectQuery(columns=p[3], table=p[5], where=where_clause, order_by=order_clause, limit=limit_clause, distinct=distinct_flag, group_by=group_clause, having=having_clause)
     
     def p_select_stmt_count(self, p):
         'select_stmt : SELECT COUNT LPAREN STAR RPAREN FROM ID optional_where optional_group'
@@ -83,6 +84,26 @@ class SQLParser:
     def p_optional_group_empty(self, p):
         'optional_group : empty'
         p[0] = None
+    
+    def p_optional_having(self, p):
+        'optional_having : HAVING having_condition'
+        p[0] = p[2]
+    
+    def p_optional_having_empty(self, p):
+        'optional_having : empty'
+        p[0] = None
+    
+    def p_having_condition(self, p):
+        '''having_condition : aggregate_comparison'''
+        p[0] = p[1]
+    
+    def p_aggregate_comparison(self, p):
+        '''aggregate_comparison : COUNT LPAREN STAR RPAREN comparator NUMBER
+                               | aggregate_func LPAREN ID RPAREN comparator NUMBER'''
+        if p[1] == 'count':
+            p[0] = {'type': 'aggregate', 'func': 'count', 'column': None, 'operator': p[5], 'value': p[6]}
+        else:
+            p[0] = {'type': 'aggregate', 'func': p[1], 'column': p[3], 'operator': p[5], 'value': p[6]}
     
     def p_optional_order(self, p):
         'optional_order : ORDER BY order_by_expr'

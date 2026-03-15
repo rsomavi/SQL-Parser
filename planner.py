@@ -7,7 +7,7 @@ from ast_nodes import SelectQuery, Condition, LogicalCondition, NotCondition, Co
 class SelectPlan:
     """Logical plan node for SELECT queries."""
     
-    def __init__(self, columns, table, where, order_by=None, limit=None, distinct=False, group_by=None):
+    def __init__(self, columns, table, where, order_by=None, limit=None, distinct=False, group_by=None, having=None):
         self.columns = columns
         self.table = table
         self.where = where
@@ -15,6 +15,7 @@ class SelectPlan:
         self.limit = limit
         self.distinct = distinct
         self.group_by = group_by
+        self.having = having
 
 
 class CountPlan:
@@ -133,7 +134,8 @@ class QueryPlanner:
             order_by=select_node.order_by,
             limit=select_node.limit,
             distinct=getattr(select_node, 'distinct', False),
-            group_by=getattr(select_node, 'group_by', None)
+            group_by=getattr(select_node, 'group_by', None),
+            having=getattr(select_node, 'having', None)
         )
         # Store aggregate column info on the plan
         plan.sum_column = sum_column

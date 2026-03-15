@@ -232,6 +232,10 @@ class QueryExecutor:
             
             results.append(result_row)
         
+        # Apply HAVING after grouping (filter groups based on aggregate conditions)
+        if plan.having:
+            results = self._apply_having(results, plan)
+        
         # Apply ORDER BY and LIMIT after grouping
         results = self._apply_order_by(results, plan)
         results = self._apply_limit(results, plan)
@@ -307,6 +311,63 @@ class QueryExecutor:
         if limit is None:
             return rows
         return rows[:limit]
+    
+    def _apply_having(self, rows, plan: SelectPlan):
+        """
+        Apply HAVING condition to filter groups.
+        
+        Args:
+            rows: List of aggregated rows (after GROUP BY)
+            plan: SelectPlan object with having condition
+            
+        Returns:
+            Filtered list of rows that satisfy HAVING condition
+        """
+        having = plan.having
+        if having is None:
+            return rows
+        
+        # Parse having condition: {'type': 'aggregate', 'func': 'count', 'operator': '>', 'value': 2}
+        func = having.get('func')
+        operator = having.get('operator')
+        threshold = having.get('value')
+        
+        filtered_rows = []
+        for row in rows:
+            # Get the aggregate value from the row
+            if func == 'count':
+                agg_value = row.get('count', 0)
+            elif func == 'sum':
+                agg_value = row.get('sum', 0)
+            elif func == 'avg':
+                agg_value = row.get('avg', 0)
+            elif func == 'min':
+                agg_value = row.get('min', 0)
+            elif func == 'max':
+                agg_value = row.get('max', 0)
+            else:
+                raise ValueError(f"Unknown aggregate function in HAVING: {func}")
+            
+            # Evaluate the condition
+            if operator == '>':
+                if agg_value > threshold:
+                    filtered_rows.append(row)
+            elif operator == '<':
+                if agg_value < threshold:
+                    filtered_rows.append(row)
+            elif operator == '>=':
+                if agg_value >= threshold:
+                    filtered_rows.append(row)
+            elif operator == '<=':
+                if agg_value <= threshold:
+                    filtered_rows.append(row)
+            elif operator == '=':
+                if agg_value == threshold:
+                    filtered_rows.append(row)
+            else:
+                raise ValueError(f"Unknown operator in HAVING: {operator}")
+        
+        return filtered_rows
     
     def _apply_projection(self, rows, plan: SelectPlan):
         """Apply column projection (SELECT columns)."""
