@@ -3,7 +3,10 @@ from planner import QueryPlanner
 from executor import QueryExecutor
 from storage import MemoryStorage
 from ast_printer import print_ast
-from ui import get_tokens, create_simple_dashboard
+from ui import get_tokens, create_paginated_dashboard, create_simple_dashboard
+import re
+import sys
+import io
 
 
 def main():
@@ -67,19 +70,43 @@ def main():
 
     # REPL loop
     while True:
-        query = input("sql> ").strip()
+        try:
+            query = input("sql> ")
+        except EOFError:
+            # Handle piped input ending
+            print()
+            break
+        except KeyboardInterrupt:
+            # Handle Ctrl+C gracefully
+            print()
+            break
         
+        # Strip whitespace for processing
+        query = query.strip()
+        
+        # Handle exit command (case-insensitive)
         if query.lower() == "exit":
             break
         
+        # Ignore empty input
         if not query:
             continue
         
         try:
+            # Capture parser output to suppress "Syntax error" messages
+            old_stdout = sys.stdout
+            sys.stdout = io.StringIO()
+            
             # Generate AST
             ast = parser.parse(query)
+            
+            # Get captured output and restore stdout
+            parser_output = sys.stdout.getvalue()
+            sys.stdout = old_stdout
+            
+            # Check if parsing failed
             if ast is None:
-                create_simple_dashboard(query, None, [], None, "ERROR: invalid SQL syntax")
+                print("Syntax error")
                 continue
             
             # Get tokens
@@ -91,8 +118,8 @@ def main():
             # Execute query
             result = executor.execute(plan)
             
-            # Display dashboard
-            create_simple_dashboard(query, ast, tokens, result)
+            # Display dashboard with pagination
+            create_paginated_dashboard(query, ast, tokens, result)
             
         except ValueError as e:
             error_msg = str(e)
@@ -100,7 +127,6 @@ def main():
                 table_name = error_msg.split(":")[-1].strip()
                 error_msg = f"ERROR: table '{table_name}' does not exist"
             elif "Column" in error_msg and "not found" in error_msg:
-                import re
                 match = re.search(r"Column '(\w+)'", error_msg)
                 if match:
                     col_name = match.group(1)
@@ -112,11 +138,13 @@ def main():
             
             # Get tokens even for error case
             tokens = get_tokens(query)
-            create_simple_dashboard(query, ast, tokens, None, error_msg)
+            create_paginated_dashboard(query, None, tokens, None, error_msg)
             
-        except Exception:
+        except Exception as e:
+            # Handle any other exceptions gracefully
+            print(f"Error: {type(e).__name__}: {e}")
             tokens = get_tokens(query)
-            create_simple_dashboard(query, ast, tokens, None, "ERROR: invalid SQL syntax")
+            create_paginated_dashboard(query, None, tokens, None, "ERROR: invalid SQL syntax")
 
 
 if __name__ == "__main__":
