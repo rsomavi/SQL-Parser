@@ -27,6 +27,7 @@ class SQLLexer:
         'DESC',
         'JOIN',
         'ON',
+        'DOT',
         'ID',
         'STAR',
         'COMMA',
@@ -94,6 +95,7 @@ class SQLLexer:
     t_LPAREN = r'\('
     t_RPAREN = r'\)'
     t_COMMA = r','
+    t_DOT = r'\.'
     t_EQUAL = r'='
     t_GE = r'>='
     t_LE = r'<='

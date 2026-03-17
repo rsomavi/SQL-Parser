@@ -33,16 +33,18 @@ class SQLParser:
         p[0] = p[1]
     
     def p_select_stmt(self, p):
-        'select_stmt : SELECT optional_distinct select_list FROM ID optional_where optional_group optional_having optional_order optional_limit'
-        # SELECT [DISTINCT] columns FROM table [WHERE condition] [GROUP BY column] [HAVING condition] [ORDER BY column] [LIMIT number];
-        # p[1]=SELECT, p[2]=optional_distinct, p[3]=select_list, p[4]=FROM, p[5]=ID, p[6]=optional_where, p[7]=optional_group, p[8]=optional_having, p[9]=optional_order, p[10]=optional_limit
-        where_clause = p[6] if p[6] else None
-        group_clause = p[7] if p[7] else None
-        having_clause = p[8] if p[8] else None
-        order_clause = p[9] if p[9] else None
-        limit_clause = p[10] if p[10] else None
+        'select_stmt : SELECT optional_distinct select_list FROM ID optional_join optional_where optional_group optional_having optional_order optional_limit'
+        # SELECT [DISTINCT] columns FROM table [JOIN table2 ON condition] [WHERE condition] [GROUP BY column] [HAVING condition] [ORDER BY column] [LIMIT number];
+        # p[1]=SELECT, p[2]=optional_distinct, p[3]=select_list, p[4]=FROM, p[5]=ID, p[6]=optional_join, p[7]=optional_where, p[8]=optional_group, p[9]=optional_having, p[10]=optional_order, p[11]=optional_limit
+        where_clause = p[7] if p[7] else None
+        group_clause = p[8] if p[8] else None
+        having_clause = p[9] if p[9] else None
+        order_clause = p[10] if p[10] else None
+        limit_clause = p[11] if p[11] else None
         distinct_flag = p[2] if p[2] else False
-        p[0] = SelectQuery(columns=p[3], table=p[5], where=where_clause, order_by=order_clause, limit=limit_clause, distinct=distinct_flag, group_by=group_clause, having=having_clause)
+        join_table = p[6].get('table') if p[6] else None
+        join_condition = p[6].get('condition') if p[6] else None
+        p[0] = SelectQuery(columns=p[3], table=p[5], where=where_clause, order_by=order_clause, limit=limit_clause, distinct=distinct_flag, group_by=group_clause, having=having_clause, join_table=join_table, join_condition=join_condition)
     
     def p_select_stmt_count(self, p):
         'select_stmt : SELECT COUNT LPAREN STAR RPAREN FROM ID optional_where optional_group'
@@ -77,6 +79,30 @@ class SQLParser:
         'optional_where : empty'
         p[0] = None
     
+    def p_optional_join(self, p):
+        'optional_join : JOIN ID ON join_condition'
+        # JOIN table ON table1.col = table2.col
+        # p[1]=JOIN, p[2]=ID(table), p[3]=ON, p[4]=join_condition
+        p[0] = {'table': p[2], 'condition': p[4]}
+    
+    def p_optional_join_empty(self, p):
+        'optional_join : empty'
+        p[0] = None
+    
+    def p_join_condition(self, p):
+        'join_condition : column_ref EQUAL column_ref'
+        # table1.column = table2.column
+        # Store as (left_col_info, right_col_info) where each is {'table': 'x', 'column': 'y'}
+        p[0] = (p[1], p[3])
+    
+    def p_column_ref(self, p):
+        'column_ref : ID'
+        p[0] = {'table': None, 'column': p[1]}
+    
+    def p_column_ref_qualified(self, p):
+        'column_ref : ID DOT ID'
+        p[0] = {'table': p[1], 'column': p[3]}
+    
     def p_optional_group(self, p):
         'optional_group : GROUP BY group_by_list'
         p[0] = p[3]
@@ -86,12 +112,14 @@ class SQLParser:
         p[0] = None
     
     def p_group_by_list_single(self, p):
-        'group_by_list : ID'
-        p[0] = [p[1]]
+        'group_by_list : column_ref'
+        # column_ref returns {'table': 'x', 'column': 'y'}, extract column name
+        p[0] = [p[1]['column']]
     
     def p_group_by_list_multiple(self, p):
-        'group_by_list : group_by_list COMMA ID'
-        p[0] = p[1] + [p[3]]
+        'group_by_list : group_by_list COMMA column_ref'
+        # column_ref returns {'table': 'x', 'column': 'y'}, extract column name
+        p[0] = p[1] + [p[3]['column']]
     
     def p_optional_having(self, p):
         'optional_having : HAVING having_condition'
@@ -122,17 +150,17 @@ class SQLParser:
         p[0] = None
     
     def p_order_by_expr_id(self, p):
-        'order_by_expr : ID'
+        'order_by_expr : column_ref'
         # Return tuple: (column, direction) - default to ASC
-        p[0] = (p[1], 'asc')
+        p[0] = (p[1]['column'], 'asc')
     
     def p_order_by_expr_id_asc(self, p):
-        'order_by_expr : ID ASC'
-        p[0] = (p[1], 'asc')
+        'order_by_expr : column_ref ASC'
+        p[0] = (p[1]['column'], 'asc')
     
     def p_order_by_expr_id_desc(self, p):
-        'order_by_expr : ID DESC'
-        p[0] = (p[1], 'desc')
+        'order_by_expr : column_ref DESC'
+        p[0] = (p[1]['column'], 'desc')
     
     def p_order_by_expr_aggregate(self, p):
         'order_by_expr : COUNT LPAREN STAR RPAREN'
@@ -205,6 +233,11 @@ class SQLParser:
         'column_item : ID'
         p[0] = {'type': 'column', 'name': p[1]}
     
+    def p_column_item_qualified_id(self, p):
+        'column_item : ID DOT ID'
+        # table.column format
+        p[0] = {'type': 'column', 'name': p[1] + '.' + p[3], 'table': p[1], 'column': p[3]}
+    
     def p_column_item_count(self, p):
         'column_item : COUNT LPAREN STAR RPAREN'
         p[0] = {'type': 'aggregate', 'func': 'count'}
@@ -254,8 +287,8 @@ class SQLParser:
             p[0] = NotCondition(condition=p[2])
     
     def p_simple_condition(self, p):
-        'simple_condition : ID comparator value'
-        p[0] = Condition(column=p[1], operator=p[2], value=p[3])
+        'simple_condition : column_ref comparator value'
+        p[0] = Condition(column=p[1]['column'], operator=p[2], value=p[3])
     
     def p_comparator(self, p):
         '''comparator : EQUAL

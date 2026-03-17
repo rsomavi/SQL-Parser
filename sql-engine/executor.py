@@ -121,8 +121,12 @@ class QueryExecutor:
         Returns:
             List of values from the requested columns, or full rows for SELECT *
         """
-        # Load and filter rows
-        rows = self._get_filtered_rows(plan.table, plan.where)
+        # Apply JOIN first if specified
+        if plan.join_table:
+            rows = self._apply_join(plan)
+        else:
+            # Load and filter rows from single table
+            rows = self._get_filtered_rows(plan.table, plan.where)
         
         # Apply GROUP BY if specified
         if plan.group_by:
@@ -134,6 +138,48 @@ class QueryExecutor:
             rows = self._apply_limit(rows, plan)
         
         return self._apply_projection(rows, plan)
+    
+    def _apply_join(self, plan: SelectPlan):
+        """
+        Apply INNER JOIN to rows from two tables.
+        
+        Args:
+            plan: SelectPlan object with join_table and join_condition
+            
+        Returns:
+            List of merged rows from both tables
+        """
+        join_table = plan.join_table
+        join_condition = plan.join_condition  # Tuple: (left_info, right_info) where each is {'table': 'x', 'column': 'y'}
+        
+        if not join_table or not join_condition:
+            return self._get_filtered_rows(plan.table, plan.where)
+        
+        left_info, right_info = join_condition
+        left_col = left_info['column']
+        right_col = right_info['column']
+        
+        # Load rows from both tables
+        left_rows = self._get_filtered_rows(plan.table, None)  # No WHERE yet - applied after join
+        right_rows = self._get_filtered_rows(join_table, None)
+        
+        # Nested Loop Join
+        results = []
+        for row1 in left_rows:
+            for row2 in right_rows:
+                # Check join condition: row1[left_col] == row2[right_col]
+                left_val = row1.get(left_col)
+                right_val = row2.get(right_col)
+                if left_val is not None and right_val is not None and left_val == right_val:
+                    # Merge rows
+                    merged_row = {**row1, **row2}
+                    results.append(merged_row)
+        
+        # Apply WHERE after join if present
+        if plan.where:
+            results = [row for row in results if self._evaluate_condition(row, plan.where, plan.table)]
+        
+        return results
     
     def _apply_group_by(self, rows, plan: SelectPlan):
         """
@@ -168,8 +214,14 @@ class QueryExecutor:
         # 2. Be inside an aggregate function (COUNT, SUM, AVG, MIN, MAX)
         # =========================================================================
         
+        # Helper function to normalize column names: 'users.city' -> 'city'
+        def normalize_column(col):
+            if isinstance(col, str) and '.' in col:
+                return col.split('.')[-1]
+            return col
+        
         columns = plan.columns
-        group_by_columns_set = set(group_by_columns)
+        group_by_columns_set = set(normalize_column(c) for c in group_by_columns)
         
         if isinstance(columns, list):
             for col in columns:
@@ -185,11 +237,12 @@ class QueryExecutor:
                 else:
                     col_name = col
                 
-                # Check if column is in GROUP BY
-                if col_name not in group_by_columns_set:
+                # Normalize and check if column is in GROUP BY
+                normalized_col = normalize_column(col_name)
+                if normalized_col not in group_by_columns_set:
                     raise ValueError(
                         f"Column '{col_name}' must be in GROUP BY or be aggregated. "
-                        f"GROUP BY columns: {group_by_columns_set}"
+                        f"GROUP BY columns: {group_by_columns}"
                     )
         
         # Group rows by the group_by columns (using tuple key for multiple columns)
@@ -415,15 +468,26 @@ class QueryExecutor:
         for row in rows:
             result_row = {}
             for col in columns:
-                # Handle dict format from parser: {'type': 'column', 'name': 'name'}
+                # Handle dict format from parser: {'type': 'column', 'name': 'table.column', 'table': 'table', 'column': 'col'}
                 if isinstance(col, dict):
-                    column_name = col.get('name', col.get('column'))
+                    if col.get('type') == 'column':
+                        # Check if it's a qualified name (table.column)
+                        if col.get('table'):
+                            column_name = col.get('column')  # Use the actual column name
+                            output_name = col.get('name')  # Use qualified name as output
+                        else:
+                            column_name = col.get('name')
+                            output_name = col.get('name')
+                    else:
+                        column_name = col.get('name', col.get('column'))
+                        output_name = column_name
                 else:
                     column_name = col
-                    
+                    output_name = col
+                
                 if column_name not in row:
                     raise ValueError(f"Column '{column_name}' not found in table '{table_name}'")
-                result_row[column_name] = row[column_name]
+                result_row[output_name] = row[column_name]
             results.append(result_row)
         
         return results
