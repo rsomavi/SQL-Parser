@@ -7,13 +7,13 @@ Validates GROUP BY semantics according to SQL standard.
 import sys
 import os
 
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add sql-engine directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'sql-engine'))
 
 from parser import get_parser
 from planner import QueryPlanner
 from executor import QueryExecutor
-from storage import MemoryStorage
+from storage_memory import MemoryStorage
 
 
 # ============================================================================
