@@ -3,21 +3,24 @@
 #include <string.h>
 #include "heap.h"
 
+#define DEFAULT_DATA_DIR "../data"
+
 // ============================================================================
 // Heap File Functions
 // ============================================================================
 
-int insert_into_table(const char *table, const void *data, int size) {
+int insert_into_table(const char *data_dir, const char *table, const void *data, int size) {
+    const char *dir = data_dir ? data_dir : DEFAULT_DATA_DIR;
     char page[PAGE_SIZE];
-    int num_pages = get_num_pages(table);
+    int num_pages = get_num_pages(dir, table);
     
     // Try to insert into existing pages
     for (int page_id = 0; page_id < num_pages; page_id++) {
-        load_page(table, page_id, page);
+        load_page(dir, table, page_id, page);
         
         int slot_id = insert_row(page, data, size);
         if (slot_id >= 0) {
-            write_page(table, page_id, page);
+            write_page(dir, table, page_id, page);
             return encode_rowid(page_id, slot_id);
         }
     }
@@ -33,13 +36,14 @@ int insert_into_table(const char *table, const void *data, int size) {
         exit(1);
     }
     
-    write_page(table, new_page_id, page);
+    write_page(dir, table, new_page_id, page);
     
     return encode_rowid(new_page_id, slot_id);
 }
 
-void scan_table(const char *table) {
-    int num_pages = get_num_pages(table);
+void scan_table(const char *data_dir, const char *table) {
+    const char *dir = data_dir ? data_dir : DEFAULT_DATA_DIR;
+    int num_pages = get_num_pages(dir, table);
     
     printf("=== Scanning table '%s' (%d pages) ===\n\n", table, num_pages);
     
@@ -48,7 +52,7 @@ void scan_table(const char *table) {
     for (int page_id = 0; page_id < num_pages; page_id++) {
         printf("--- Page %d ---\n", page_id);
         
-        load_page(table, page_id, page);
+        load_page(dir, table, page_id, page);
         
         PageHeader *header = (PageHeader *)page;
         printf("num_slots: %d\n", header->num_slots);
@@ -77,8 +81,9 @@ void scan_table(const char *table) {
     }
 }
 
-void debug_print_table(const char *table) {
-    int num_pages = get_num_pages(table);
+void debug_print_table(const char *data_dir, const char *table) {
+    const char *dir = data_dir ? data_dir : DEFAULT_DATA_DIR;
+    int num_pages = get_num_pages(dir, table);
     
     printf("=== Debug: Table '%s' (%d pages) ===\n\n", table, num_pages);
     
@@ -86,7 +91,7 @@ void debug_print_table(const char *table) {
     
     for (int page_id = 0; page_id < num_pages; page_id++) {
         printf("=== Page %d ===\n", page_id);
-        load_page(table, page_id, page);
+        load_page(dir, table, page_id, page);
         print_page(page);
         printf("\n");
     }

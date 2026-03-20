@@ -8,9 +8,9 @@
 // Disk I/O Functions
 // ============================================================================
 
-void read_page(const char *table, int page_id) {
+void read_page(const char *data_dir, const char *table, int page_id) {
     char filename[256];
-    sprintf(filename, "../data/%s.db", table);
+    sprintf(filename, "%s/%s.db", data_dir, table);
     
     FILE *file = fopen(filename, "rb");
     
@@ -36,9 +36,9 @@ void read_page(const char *table, int page_id) {
     fclose(file);
 }
 
-void write_page(const char *table, int page_id, char *page) {
+void write_page(const char *data_dir, const char *table, int page_id, char *page) {
     char filename[256];
-    sprintf(filename, "../data/%s.db", table);
+    sprintf(filename, "%s/%s.db", data_dir, table);
     
     // Open in read+binary mode, create if doesn't exist
     FILE *file = fopen(filename, "rb+");
@@ -65,9 +65,9 @@ void write_page(const char *table, int page_id, char *page) {
     fclose(file);
 }
 
-void load_page(const char *table, int page_id, char *page) {
+void load_page(const char *data_dir, const char *table, int page_id, char *page) {
     char filename[256];
-    sprintf(filename, "../data/%s.db", table);
+    sprintf(filename, "%s/%s.db", data_dir, table);
     
     FILE *file = fopen(filename, "rb");
     if (!file) {
@@ -99,9 +99,9 @@ void load_page(const char *table, int page_id, char *page) {
     fclose(file);
 }
 
-int get_num_pages(const char *table) {
+int get_num_pages(const char *data_dir, const char *table) {
     char filename[256];
-    sprintf(filename, "../data/%s.db", table);
+    sprintf(filename, "%s/%s.db", data_dir, table);
     
     FILE *file = fopen(filename, "rb");
     if (!file) {

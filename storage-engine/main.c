@@ -6,6 +6,7 @@
 #include "heap.h"
 
 #define MAX_LINE 1024
+#define DEFAULT_DATA_DIR "../data"
 
 // ============================================================================
 // Helper Functions
@@ -42,7 +43,7 @@ void test_disk_page() {
     init_page(page);
     
     // insert rows
-    insert_row(page, "row1", 5);
+    insert_row(page, "marcos osma", 12);
     insert_row(page, "hello world", 12);
     insert_row(page, "abc", 4);
     
@@ -50,7 +51,7 @@ void test_disk_page() {
     delete_row(page, 1);
     
     // write page to disk
-    write_page("users", 0, page);
+    write_page(DEFAULT_DATA_DIR, "users", 0, page);
     
     printf("Page written to disk\n");
     
@@ -58,7 +59,7 @@ void test_disk_page() {
     memset(page, 0, PAGE_SIZE);
     
     // load page from disk
-    load_page("users", 0, page);
+    load_page(DEFAULT_DATA_DIR, "users", 0, page);
     
     printf("Page loaded from disk\n\n");
     
@@ -109,20 +110,20 @@ void test_heap_file() {
     printf("=== Testing Heap File ===\n\n");
     
     // Insert rows
-    int id1 = insert_into_table("users", "row1", 4);
+    int id1 = insert_into_table(DEFAULT_DATA_DIR, "users", "row1", 4);
     printf("Inserted row1, RowID=%d (page=%d, slot=%d)\n", 
            id1, decode_rowid_page(id1), decode_rowid_slot(id1));
     
-    int id2 = insert_into_table("users", "row2", 4);
+    int id2 = insert_into_table(DEFAULT_DATA_DIR, "users", "row2", 4);
     printf("Inserted row2, RowID=%d (page=%d, slot=%d)\n", 
            id2, decode_rowid_page(id2), decode_rowid_slot(id2));
     
-    int id3 = insert_into_table("users", "row3", 4);
+    int id3 = insert_into_table(DEFAULT_DATA_DIR, "users", "row3", 4);
     printf("Inserted row3, RowID=%d (page=%d, slot=%d)\n\n", 
            id3, decode_rowid_page(id3), decode_rowid_slot(id3));
     
     // Scan table
-    scan_table("users");
+    scan_table(DEFAULT_DATA_DIR, "users");
 }
 
 // ============================================================================
@@ -153,10 +154,10 @@ int main(int argc, char *argv[]) {
         test_heap_file();
     }
     else if (strcmp(argv[1], "scan") == 0) {
-        scan_table(argv[2]);
+        scan_table(DEFAULT_DATA_DIR, argv[2]);
     }
     else if (strcmp(argv[1], "debug") == 0) {
-        debug_print_table(argv[2]);
+        debug_print_table(DEFAULT_DATA_DIR, argv[2]);
     }
     else if (argc < 3) {
         fprintf(stderr, "Error: missing table name\n");
@@ -171,7 +172,7 @@ int main(int argc, char *argv[]) {
             return 1;
         }
         int page_id = atoi(argv[3]);
-        read_page(argv[2], page_id);
+        read_page(DEFAULT_DATA_DIR, argv[2], page_id);
     }
     else if (strcmp(argv[1], "write_page") == 0) {
         if (argc < 5) {
@@ -179,7 +180,7 @@ int main(int argc, char *argv[]) {
             return 1;
         }
         int page_id = atoi(argv[3]);
-        write_page(argv[2], page_id, argv[4]);
+        write_page(DEFAULT_DATA_DIR, argv[2], page_id, argv[4]);
     }
     
     return 0;

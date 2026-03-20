@@ -17,8 +17,8 @@ static inline int decode_rowid_slot(int rowid) {
     return rowid & 0xFFFF;
 }
 
-int insert_into_table(const char *table, const void *data, int size);
-void scan_table(const char *table);
-void debug_print_table(const char *table);
+int insert_into_table(const char *data_dir, const char *table, const void *data, int size);
+void scan_table(const char *data_dir, const char *table);
+void debug_print_table(const char *data_dir, const char *table);
 
 #endif /* HEAP_H */
