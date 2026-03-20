@@ -14,8 +14,11 @@ int insert_into_table(const char *data_dir, const char *table, const void *data,
     char page[PAGE_SIZE];
     int num_pages = get_num_pages(dir, table);
     
-    // Try to insert into existing pages
-    for (int page_id = 0; page_id < num_pages; page_id++) {
+    // Page 0 is reserved for schema, start scanning from page 1
+    int start_page = (num_pages > 0) ? 1 : 1;
+    
+    // Try to insert into existing pages (starting from page 1)
+    for (int page_id = start_page; page_id < num_pages; page_id++) {
         load_page(dir, table, page_id, page);
         
         int slot_id = insert_row(page, data, size);
@@ -25,8 +28,8 @@ int insert_into_table(const char *data_dir, const char *table, const void *data,
         }
     }
     
-    // No page has space, create new page
-    int new_page_id = num_pages;
+    // No page has space, create new page (starting from page 1 if no pages exist)
+    int new_page_id = (num_pages > 1) ? num_pages : 1;
     init_page(page);
     int slot_id = insert_row(page, data, size);
     
@@ -49,7 +52,8 @@ void scan_table(const char *data_dir, const char *table) {
     
     char page[PAGE_SIZE];
     
-    for (int page_id = 0; page_id < num_pages; page_id++) {
+    // Page 0 is reserved for schema, start scanning from page 1
+    for (int page_id = 1; page_id < num_pages; page_id++) {
         printf("--- Page %d ---\n", page_id);
         
         load_page(dir, table, page_id, page);
@@ -89,7 +93,8 @@ void debug_print_table(const char *data_dir, const char *table) {
     
     char page[PAGE_SIZE];
     
-    for (int page_id = 0; page_id < num_pages; page_id++) {
+    // Page 0 is reserved for schema, start scanning from page 1
+    for (int page_id = 1; page_id < num_pages; page_id++) {
         printf("=== Page %d ===\n", page_id);
         load_page(dir, table, page_id, page);
         print_page(page);
