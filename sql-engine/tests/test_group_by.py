@@ -8,7 +8,7 @@ import sys
 import os
 
 # Add sql-engine directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'sql-engine'))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from parser import get_parser
 from planner import QueryPlanner
