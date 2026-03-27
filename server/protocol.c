@@ -43,6 +43,11 @@ int protocol_read_request(int client_fd, Request *req) {
     if (strcmp(line, "PING") == 0) {
         req->op = OP_PING;
         return 0;
+    } else if (strncmp(line, "SCAN ", 5) == 0) { // SCAN <table_name>
+        req->op = OP_SCAN;
+        strncpy(req->table_name, line + 5, sizeof(req->table_name) - 1);
+        req->table_name[sizeof(req->table_name) - 1] = '\0';
+        return 0;
     }
 
     req->op = OP_UNKNOWN;
@@ -79,6 +84,23 @@ int protocol_response_append(ResponseBuf *rb, const char *text) {
     memcpy(rb->buf + rb->len, text, tlen);
     rb->len += tlen;
     rb->buf[rb->len] = '\0';
+    return 0;
+}
+
+int protocol_response_append_binary(ResponseBuf *rb,
+                                     const char *data, size_t len) {
+    if (!rb || !data) return -1;
+
+    // Need len bytes + 1 for safety (no \0 appended for binary)
+    while (rb->len + len + 1 > rb->cap) {
+        rb->cap *= 2;
+        char *newbuf = realloc(rb->buf, rb->cap);
+        if (!newbuf) return -1;
+        rb->buf = newbuf;
+    }
+
+    memcpy(rb->buf + rb->len, data, len);
+    rb->len += len;
     return 0;
 }
 

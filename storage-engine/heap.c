@@ -85,6 +85,44 @@ void scan_table(const char *data_dir, const char *table) {
     }
 }
 
+int scan_table_raw(const char *data_dir, const char *table,
+                   char **rows_out, int *sizes_out, int max_rows) {
+    if (!data_dir || !table || !rows_out || !sizes_out || max_rows <= 0)
+        return -1;
+
+    const char *dir = data_dir ? data_dir : DEFAULT_DATA_DIR;
+    int num_pages   = get_num_pages(dir, table);
+    int num_rows    = 0;
+
+    static char page_bufs[1024][PAGE_SIZE];  // static — safe for single-threaded v1
+    int page_buf_idx = 0;
+
+    for (int page_id = 1; page_id < num_pages && num_rows < max_rows; page_id++) {
+        if (page_buf_idx >= 1024) break;
+
+        char *page = page_bufs[page_buf_idx++];
+        load_page(dir, table, page_id, page);
+
+        PageHeader *header  = (PageHeader *)page;
+        int        *slot_dir = (int *)(page + sizeof(PageHeader));
+
+        for (int slot_id = 0; slot_id < header->num_slots && num_rows < max_rows; slot_id++) {
+            if (slot_dir[slot_id] == -1) continue;  // deleted slot
+
+            int   row_size = get_row_size(page, slot_id);
+            char *row      = read_row(page, slot_id);
+
+            if (row && row_size > 0) {
+                rows_out[num_rows]  = row;
+                sizes_out[num_rows] = row_size;
+                num_rows++;
+            }
+        }
+    }
+
+    return num_rows;
+}
+
 void debug_print_table(const char *data_dir, const char *table) {
     const char *dir = data_dir ? data_dir : DEFAULT_DATA_DIR;
     int num_pages = get_num_pages(dir, table);

@@ -19,4 +19,6 @@ void handler_dispatch(Server *srv, int client_fd, Request *req);
 // PING — verify server is alive
 void handler_ping(Server *srv, int client_fd);
 
+void handler_scan(Server *srv, int client_fd, Request *req);
+
 #endif

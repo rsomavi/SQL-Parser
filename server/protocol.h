@@ -9,7 +9,8 @@
 
 typedef enum {
     OP_PING,
-    OP_UNKNOWN
+    OP_UNKNOWN,
+    OP_SCAN
 } OperationType;
 
 // ============================================================================
@@ -18,6 +19,7 @@ typedef enum {
 
 typedef struct {
     OperationType  op;
+    char           table_name[64];
     char           raw[1024];   // original line for debugging
 } Request;
 
@@ -44,6 +46,9 @@ int  protocol_response_init(ResponseBuf *rb);
 
 // Append text to the response buffer.
 int  protocol_response_append(ResponseBuf *rb, const char *text);
+
+int  protocol_response_append_binary(ResponseBuf *rb,
+                                     const char *data, size_t len);
 
 // Send the response buffer to the client and reset it.
 int  protocol_response_send(ResponseBuf *rb, int client_fd);
