@@ -5,6 +5,7 @@
 #include "handlers.h"
 #include "../storage-engine/page.h"
 #include "../storage-engine/disk.h"
+#include "../storage-engine/schema.h"
 
 // ============================================================================
 // Internal helper: append metrics footer to response
@@ -32,6 +33,9 @@ void handler_dispatch(Server *srv, int client_fd, Request *req) {
             break;
         case OP_SCAN:
             handler_scan(srv, client_fd, req);
+            break;
+        case OP_SCHEMA:
+            handler_schema(srv, client_fd, req);
             break;
         case OP_UNKNOWN:
         default: {
@@ -155,4 +159,64 @@ void handler_scan(Server *srv, int client_fd, Request *req) {
     protocol_response_append(&end_rb, "END\n");
     protocol_response_send(&end_rb, client_fd);
     protocol_response_free(&end_rb);
+}
+
+void handler_schema(Server *srv, int client_fd, Request *req) {
+    ResponseBuf rb;
+    protocol_response_init(&rb);
+
+    if (req->table_name[0] == '\0') {
+        protocol_response_append(&rb, "ERR INVALID_ARGS missing table name\n");
+        append_metrics(&rb, srv);
+        protocol_response_append(&rb, "END\n");
+        protocol_response_send(&rb, client_fd);
+        protocol_response_free(&rb);
+        return;
+    }
+
+    // Load schema from page 0
+    Schema schema;
+    if (schema_load(&schema, req->table_name, srv->data_dir) != 0) {
+        protocol_response_append(&rb, "ERR TABLE_NOT_FOUND table does not exist\n");
+        append_metrics(&rb, srv);
+        protocol_response_append(&rb, "END\n");
+        protocol_response_send(&rb, client_fd);
+        protocol_response_free(&rb);
+        return;
+    }
+
+    // Send header
+    protocol_response_append(&rb, "OK\n");
+
+    char col_count[32];
+    snprintf(col_count, sizeof(col_count), "COLUMNS %d\n", schema.num_columns);
+    protocol_response_append(&rb, col_count);
+
+    // Send one line per column: name:type:max_size:nullable:pk
+    for (int i = 0; i < schema.num_columns; i++) {
+        ColumnDef *col = &schema.columns[i];
+
+        const char *type_str;
+        switch (col->type) {
+            case TYPE_INT:     type_str = "INT";     break;
+            case TYPE_FLOAT:   type_str = "FLOAT";   break;
+            case TYPE_BOOLEAN: type_str = "BOOL";    break;
+            case TYPE_VARCHAR: type_str = "VARCHAR"; break;
+            default:           type_str = "UNKNOWN"; break;
+        }
+
+        char col_line[256];
+        snprintf(col_line, sizeof(col_line), "%s:%s:%d:%d:%d\n",
+                 col->name,
+                 type_str,
+                 col->max_size,
+                 col->nullable,
+                 col->is_primary_key);
+        protocol_response_append(&rb, col_line);
+    }
+
+    append_metrics(&rb, srv);
+    protocol_response_append(&rb, "END\n");
+    protocol_response_send(&rb, client_fd);
+    protocol_response_free(&rb);
 }

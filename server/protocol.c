@@ -48,6 +48,11 @@ int protocol_read_request(int client_fd, Request *req) {
         strncpy(req->table_name, line + 5, sizeof(req->table_name) - 1);
         req->table_name[sizeof(req->table_name) - 1] = '\0';
         return 0;
+    } else if (strncmp(line, "SCHEMA ", 7) == 0) { // SCHEMA <table_name>
+        req->op = OP_SCHEMA;
+        strncpy(req->table_name, line + 7, sizeof(req->table_name) - 1);
+        req->table_name[sizeof(req->table_name) - 1] = '\0';
+        return 0;
     }
 
     req->op = OP_UNKNOWN;

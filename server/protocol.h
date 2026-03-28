@@ -9,8 +9,9 @@
 
 typedef enum {
     OP_PING,
-    OP_UNKNOWN,
-    OP_SCAN
+    OP_SCAN,
+    OP_SCHEMA,
+    OP_UNKNOWN
 } OperationType;
 
 // ============================================================================
