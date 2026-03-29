@@ -43,6 +43,17 @@ class SQLLexer:
         'NOT',
         'LPAREN',
         'RPAREN',
+        'CREATE',
+        'TABLE',
+        'INT',
+        'FLOAT',
+        'BOOL',
+        'VARCHAR',
+        'PRIMARY',
+        'KEY',
+        'NULL',
+        'INTO',
+        'VALUES'
     )
     
     # Reserved words
@@ -68,42 +79,33 @@ class SQLLexer:
         'DESC': 'DESC',
         'JOIN': 'JOIN',
         'ON': 'ON',
+        'CREATE':  'CREATE',
+        'TABLE':   'TABLE',
+        'INT':     'INT',
+        'FLOAT':   'FLOAT',
+        'BOOL':    'BOOL',
+        'VARCHAR': 'VARCHAR',
+        'PRIMARY': 'PRIMARY',
+        'KEY':     'KEY',
+        'NULL':    'NULL',
+        'INTO':    'INTO',
+        'VALUES':  'VALUES',
     }
     
     # Regular expression rules for simple tokens
     # Note: GE and LE must be defined before GT and LT to avoid incorrect matching
     # Using (?i) flag makes patterns case-insensitive
-    t_SELECT = r'(?i)SELECT'
-    t_FROM = r'(?i)FROM'
-    t_WHERE = r'(?i)WHERE'
-    t_ORDER = r'(?i)ORDER'
-    t_BY = r'(?i)BY'
-    t_LIMIT = r'(?i)LIMIT'
-    t_COUNT = r'(?i)COUNT'
-    t_SUM = r'(?i)SUM'
-    t_AVG = r'(?i)AVG'
-    t_MIN = r'(?i)MIN'
-    t_MAX = r'(?i)MAX'
-    t_DISTINCT = r'(?i)DISTINCT'
-    t_GROUP = r'(?i)GROUP'
-    t_HAVING = r'(?i)HAVING'
-    t_ASC = r'(?i)ASC'
-    t_DESC = r'(?i)DESC'
-    t_JOIN = r'(?i)JOIN'
-    t_ON = r'(?i)ON'
-    t_STAR = r'\*'
+
+    t_STAR   = r'\*'
     t_LPAREN = r'\('
     t_RPAREN = r'\)'
-    t_COMMA = r','
-    t_DOT = r'\.'
-    t_EQUAL = r'='
-    t_GE = r'>='
-    t_LE = r'<='
-    t_GT = r'>'
-    t_LT = r'<'
-    t_AND = r'(?i)AND'
-    t_OR = r'(?i)OR'
-    t_NOT = r'(?i)NOT'
+    t_COMMA  = r','
+    t_DOT    = r'\.'
+    t_EQUAL  = r'='
+    t_GE     = r'>='
+    t_LE     = r'<='
+    t_GT     = r'>'
+    t_LT     = r'<'
     
     # Number (integer)
     def t_NUMBER(self, t):
