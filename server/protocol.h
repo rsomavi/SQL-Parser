@@ -11,6 +11,7 @@ typedef enum {
     OP_PING,
     OP_SCAN,
     OP_SCHEMA,
+    OP_CREATE,
     OP_UNKNOWN
 } OperationType;
 
@@ -21,6 +22,7 @@ typedef enum {
 typedef struct {
     OperationType  op;
     char           table_name[64];
+    char           args[1024];
     char           raw[1024];   // original line for debugging
 } Request;
 

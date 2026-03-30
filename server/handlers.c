@@ -37,6 +37,9 @@ void handler_dispatch(Server *srv, int client_fd, Request *req) {
         case OP_SCHEMA:
             handler_schema(srv, client_fd, req);
             break;
+        case OP_CREATE:
+            handler_create(srv, client_fd, req);
+            break;
         case OP_UNKNOWN:
         default: {
             ResponseBuf rb;
@@ -215,6 +218,116 @@ void handler_schema(Server *srv, int client_fd, Request *req) {
         protocol_response_append(&rb, col_line);
     }
 
+    append_metrics(&rb, srv);
+    protocol_response_append(&rb, "END\n");
+    protocol_response_send(&rb, client_fd);
+    protocol_response_free(&rb);
+}
+
+void handler_create(Server *srv, int client_fd, Request *req) {
+    ResponseBuf rb;
+    protocol_response_init(&rb);
+
+    if (req->table_name[0] == '\0') {
+        protocol_response_append(&rb, "ERR INVALID_ARGS missing table name\n");
+        append_metrics(&rb, srv);
+        protocol_response_append(&rb, "END\n");
+        protocol_response_send(&rb, client_fd);
+        protocol_response_free(&rb);
+        return;
+    }
+
+    // Check table does not already exist
+    if (get_num_pages(srv->data_dir, req->table_name) > 0) {
+        protocol_response_append(&rb, "ERR TABLE_EXISTS table already exists\n");
+        append_metrics(&rb, srv);
+        protocol_response_append(&rb, "END\n");
+        protocol_response_send(&rb, client_fd);
+        protocol_response_free(&rb);
+        return;
+    }
+
+    // Parse columns from args
+    // args = "ciudades id:INT:4:0:1 nombre:VARCHAR:100:0:0 poblacion:INT:4:1:0"
+    Schema schema;
+    memset(&schema, 0, sizeof(Schema));
+    strncpy(schema.table_name, req->table_name, MAX_TABLE_NAME - 1);
+    schema.num_columns = 0;
+
+    // Skip the table name token and parse column definitions
+    char args_copy[1024];
+    strncpy(args_copy, req->args, sizeof(args_copy) - 1);
+    args_copy[sizeof(args_copy) - 1] = '\0';
+
+    char *token = strtok(args_copy, " ");  // skip table name
+    token = strtok(NULL, " ");             // first column
+
+    while (token != NULL && schema.num_columns < MAX_COLUMNS) {
+        // token = "id:INT:4:0:1"
+        char col_name[MAX_COL_NAME];
+        char type_str[16];
+        int  max_size  = 0;
+        int  nullable  = 1;
+        int  pk        = 0;
+
+        if (sscanf(token, "%63[^:]:%15[^:]:%d:%d:%d",
+                   col_name, type_str, &max_size, &nullable, &pk) != 5) {
+            protocol_response_append(&rb, "ERR INVALID_ARGS malformed column\n");
+            append_metrics(&rb, srv);
+            protocol_response_append(&rb, "END\n");
+            protocol_response_send(&rb, client_fd);
+            protocol_response_free(&rb);
+            return;
+        }
+
+        ColumnDef *col = &schema.columns[schema.num_columns];
+        strncpy(col->name, col_name, MAX_COL_NAME - 1);
+        col->name[MAX_COL_NAME - 1] = '\0';
+        col->max_size      = max_size;
+        col->nullable      = nullable;
+        col->is_primary_key = pk;
+
+        if      (strcmp(type_str, "INT")     == 0) col->type = TYPE_INT;
+        else if (strcmp(type_str, "FLOAT")   == 0) col->type = TYPE_FLOAT;
+        else if (strcmp(type_str, "BOOL")    == 0) col->type = TYPE_BOOLEAN;
+        else if (strcmp(type_str, "VARCHAR") == 0) col->type = TYPE_VARCHAR;
+        else {
+            protocol_response_append(&rb, "ERR INVALID_ARGS unknown type\n");
+            append_metrics(&rb, srv);
+            protocol_response_append(&rb, "END\n");
+            protocol_response_send(&rb, client_fd);
+            protocol_response_free(&rb);
+            return;
+        }
+
+        schema.num_columns++;
+        token = strtok(NULL, " ");
+    }
+
+    if (schema.num_columns == 0) {
+        protocol_response_append(&rb, "ERR INVALID_ARGS no columns defined\n");
+        append_metrics(&rb, srv);
+        protocol_response_append(&rb, "END\n");
+        protocol_response_send(&rb, client_fd);
+        protocol_response_free(&rb);
+        return;
+    }
+
+    // Save schema to disk (page 0)
+    if (schema_save(&schema, srv->data_dir) != 0) {
+        protocol_response_append(&rb, "ERR IO_ERROR failed to save schema\n");
+        append_metrics(&rb, srv);
+        protocol_response_append(&rb, "END\n");
+        protocol_response_send(&rb, client_fd);
+        protocol_response_free(&rb);
+        return;
+    }
+
+    // Success
+    char created_line[128];
+    snprintf(created_line, sizeof(created_line),
+             "OK\nCREATED %s\n", req->table_name);
+    protocol_response_append(&rb, created_line);
     append_metrics(&rb, srv);
     protocol_response_append(&rb, "END\n");
     protocol_response_send(&rb, client_fd);

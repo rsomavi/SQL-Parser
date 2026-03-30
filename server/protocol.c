@@ -42,16 +42,29 @@ int protocol_read_request(int client_fd, Request *req) {
     // Parse operation — just PING for now
     if (strcmp(line, "PING") == 0) {
         req->op = OP_PING;
+
         return 0;
     } else if (strncmp(line, "SCAN ", 5) == 0) { // SCAN <table_name>
         req->op = OP_SCAN;
+
         strncpy(req->table_name, line + 5, sizeof(req->table_name) - 1);
         req->table_name[sizeof(req->table_name) - 1] = '\0';
         return 0;
     } else if (strncmp(line, "SCHEMA ", 7) == 0) { // SCHEMA <table_name>
         req->op = OP_SCHEMA;
+        
         strncpy(req->table_name, line + 7, sizeof(req->table_name) - 1);
         req->table_name[sizeof(req->table_name) - 1] = '\0';
+        return 0;
+    } else if (strncmp(line, "CREATE ", 7) == 0) { // CREATE <table_name> <col1:type1> <col2:type2> ...\n
+        req->op = OP_CREATE;
+        req->table_name[0] = '\0';
+        req->args[0]       = '\0';
+
+        strncpy(req->args, line + 7, sizeof(req->args) - 1);
+        req->args[sizeof(req->args) - 1] = '\0';
+        // table_name is the first word of args
+        sscanf(req->args, "%63s", req->table_name);
         return 0;
     }
 

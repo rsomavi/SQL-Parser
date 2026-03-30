@@ -23,4 +23,6 @@ void handler_scan(Server *srv, int client_fd, Request *req);
 
 void handler_schema(Server *srv, int client_fd, Request *req);
 
+void handler_create(Server *srv, int client_fd, Request *req);
+
 #endif
