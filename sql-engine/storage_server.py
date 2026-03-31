@@ -316,8 +316,6 @@ class ServerStorage:
             )
 
         cmd = f"CREATE {table_name} " + " ".join(col_parts)
-
-        print(f"[ServerStorage] → {cmd}")
         
         sock = self._connect()
         try:

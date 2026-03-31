@@ -10,7 +10,11 @@ from ast_nodes import (
     SumQuery,
     AvgQuery,
     MinQuery,
-    MaxQuery
+    MaxQuery,
+    CreateTableQuery,
+    InsertQuery,
+    DeleteQuery,
+    UpdateQuery
 )
 
 
@@ -56,7 +60,16 @@ def print_ast(node, indent=0):
     
     elif isinstance(node, MaxQuery):
         print_aggregate_query(node, "MAX", indent)
-    
+    elif isinstance(node, CreateTableQuery):
+        print_create_table_query(node, indent)
+    elif isinstance(node, InsertQuery):
+        print("  " * indent + f"InsertQuery(table={node.table_name!r})")
+
+    elif isinstance(node, DeleteQuery):
+        print("  " * indent + f"DeleteQuery(table={node.table_name!r})")
+
+    elif isinstance(node, UpdateQuery):
+        print("  " * indent + f"UpdateQuery(table={node.table_name!r})")
     else:
         print("  " * indent + f"Unknown node: {class_name}")
 
@@ -133,3 +146,14 @@ def print_aggregate_query(node, agg_name: str, indent: int):
     if node.where is not None:
         print("  " * (indent + 1) + "WHERE")
         print_ast(node.where, indent + 2)
+
+def print_create_table_query(node: CreateTableQuery, indent: int):
+    """Print a CreateTableQuery node."""
+    print("  " * indent + "CreateTableQuery")
+    print("  " * (indent + 1) + f"table: {node.table_name}")
+    for col in node.columns:
+        pk_str  = " PK"  if col.primary_key else ""
+        nn_str  = " NOT NULL" if not col.nullable else ""
+        sz_str  = f"({col.max_size})" if col.col_type == "VARCHAR" else ""
+        print("  " * (indent + 1) +
+              f"  {col.name}: {col.col_type}{sz_str}{pk_str}{nn_str}")
