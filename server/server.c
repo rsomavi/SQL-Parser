@@ -11,6 +11,18 @@
 #include "protocol.h"
 #include "handlers.h"
 
+static Server *g_srv = NULL;
+
+static void handle_signal(int sig) {
+    fprintf(stderr, "\n[server] signal %d — flushing and shutting down\n", sig);
+    if (g_srv) {
+        server_stop(g_srv);
+        server_destroy(g_srv);
+    }
+    exit(0);
+}
+
+
 // ============================================================================
 // server_init
 // ============================================================================
@@ -128,12 +140,13 @@ void server_run(Server *srv) {
 // ============================================================================
 // server_stop
 // ============================================================================
-
 void server_stop(Server *srv) {
     if (!srv) return;
     srv->running = 0;
-    if (srv->listen_fd >= 0)
+    if (srv->listen_fd >= 0) {
         close(srv->listen_fd);
+        srv->listen_fd = -1;
+    }
 }
 
 // ============================================================================
@@ -162,8 +175,12 @@ int main(int argc, char *argv[]) {
 
     // Ignore SIGPIPE — don't crash when client disconnects mid-write
     signal(SIGPIPE, SIG_IGN);
+    signal(SIGINT,  handle_signal);
+    signal(SIGTERM, handle_signal);
+
 
     Server srv;
+    g_srv = &srv;
     if (server_init(&srv, data_dir, num_frames, policy_lru_create()) != 0) {
         fprintf(stderr, "[server] init failed\n");
         return 1;

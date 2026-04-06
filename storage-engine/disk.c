@@ -8,7 +8,7 @@
 // Disk I/O Functions
 // ============================================================================
 
-void read_page(const char *data_dir, const char *table, int page_id) {
+int read_page(const char *data_dir, const char *table, int page_id) {
     char filename[256];
     sprintf(filename, "%s/%s.db", data_dir, table);
     
@@ -16,7 +16,7 @@ void read_page(const char *data_dir, const char *table, int page_id) {
     
     if (!file) {
         fprintf(stderr, "ERROR: file not found\n");
-        exit(1);
+        return -1;
     }
     
     char buffer[PAGE_SIZE];
@@ -28,15 +28,16 @@ void read_page(const char *data_dir, const char *table, int page_id) {
     if (bytes_read == 0) {
         fprintf(stderr, "ERROR: empty page or out of bounds\n");
         fclose(file);
-        exit(1);
+        return -1;
     }
     
     fwrite(buffer, 1, bytes_read, stdout);
     
     fclose(file);
+    return 0;
 }
 
-void write_page(const char *data_dir, const char *table, int page_id, char *page) {
+int write_page(const char *data_dir, const char *table, int page_id, char *page) {
     char filename[256];
     sprintf(filename, "%s/%s.db", data_dir, table);
     
@@ -46,7 +47,7 @@ void write_page(const char *data_dir, const char *table, int page_id, char *page
         file = fopen(filename, "wb");
         if (!file) {
             fprintf(stderr, "ERROR: cannot create file\n");
-            exit(1);
+            return -1;
         }
         fclose(file);
         file = fopen(filename, "rb+");
@@ -59,20 +60,21 @@ void write_page(const char *data_dir, const char *table, int page_id, char *page
     if (written != PAGE_SIZE) {
         fprintf(stderr, "ERROR: failed to write full page\n");
         fclose(file);
-        exit(1);
+        return -1;
     }
     
     fclose(file);
+    return 0;
 }
 
-void load_page(const char *data_dir, const char *table, int page_id, char *page) {
+int load_page(const char *data_dir, const char *table, int page_id, char *page) {
     char filename[256];
     sprintf(filename, "%s/%s.db", data_dir, table);
     
     FILE *file = fopen(filename, "rb");
     if (!file) {
         fprintf(stderr, "ERROR: file not found\n");
-        exit(1);
+        return -1;
     }
     
     // Validate page_id bounds
@@ -83,7 +85,7 @@ void load_page(const char *data_dir, const char *table, int page_id, char *page)
     if (page_id >= num_pages) {
         fprintf(stderr, "ERROR: page_id %d out of bounds (max: %d)\n", page_id, num_pages - 1);
         fclose(file);
-        exit(1);
+        return -1;
     }
     
     fseek(file, page_id * PAGE_SIZE, SEEK_SET);
@@ -93,10 +95,11 @@ void load_page(const char *data_dir, const char *table, int page_id, char *page)
     if (bytes_read != PAGE_SIZE) {
         fprintf(stderr, "ERROR: incomplete read (%zu bytes)\n", bytes_read);
         fclose(file);
-        exit(1);
+        return -1;
     }
     
     fclose(file);
+    return 0;
 }
 
 int get_num_pages(const char *data_dir, const char *table) {
@@ -119,7 +122,7 @@ int get_num_pages(const char *data_dir, const char *table) {
     // Validate file integrity
     if (file_size % PAGE_SIZE != 0) {
         fprintf(stderr, "ERROR: corrupted table file (invalid size %ld)\n", file_size);
-        exit(1);
+        return -1;
     }
     
     return file_size / PAGE_SIZE;

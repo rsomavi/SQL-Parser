@@ -3,6 +3,7 @@
 
 #include "page.h"
 #include "disk.h"
+#include "buffer_manager.h"
 
 // RowID encoding/decoding helpers
 static inline int encode_rowid(int page_id, int slot_id) {
@@ -30,6 +31,11 @@ void scan_table(const char *data_dir, const char *table);
 //       The server's handler_scan is responsible for going through bm_fetch_page.
 int scan_table_raw(const char *data_dir, const char *table,
                    char **rows_out, int *sizes_out, int max_rows);
+
+// Insert a row via buffer pool — page stays in cache marked dirty
+// Returns RowID = (page_id << 16) | slot_id, or -1 on error
+int heap_insert_bm(const char *data_dir, const char *table_name,
+                   const void *data, int size, BufferManager *bm);
                    
 void debug_print_table(const char *data_dir, const char *table);
 

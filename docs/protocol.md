@@ -1,0 +1,567 @@
+# MINIDBMS-RESP Protocol Specification
+
+## Overview
+
+MINIDBMS-RESP is a text-framed binary-payload protocol for communication
+between the Python SQL executor and the C storage engine server.
+
+It is inspired by Redis RESP (REdis Serialization Protocol) but adapted
+for database storage operations. The Python layer is responsible for SQL
+parsing, planning, and optimization. The C server is responsible for
+storage — buffer pool management, heap I/O, and schema.
+
+**What travels over the wire is not SQL.**
+The Python executor parses SQL into an AST, plans the query, and translates
+the plan into storage operations. Those operations are what the C server receives.
+
+## Design Decisions
+
+- **Row data is binary** — more efficient than text, avoids encoding ambiguity
+- **Single connection per session** — concurrency added in a later version
+- **Metrics included in every response** — the monitor always has fresh data
+- **One operation per request** — no pipelining in v1
+
+## Transport
+
+- TCP, default port **5433** (5432 is PostgreSQL, we avoid conflicts)
+- One request → one response per round trip
+- Connection is persistent for the duration of a session
+- Server sends no data until it receives a request
+
+## Message Format
+
+### Request
+
+Every request starts with a header line in ASCII, followed by optional
+binary payload for operations that send row data.
+
+```
+<OPERATION> [ARG1] [ARG2] ... [ARGn]\n
+[PAYLOAD_SIZE]\n                        ← only if operation has payload
+[binary payload bytes]                  ← only if operation has payload
+```
+
+Lines are terminated with `\n` (LF, 0x0A). The binary payload does NOT
+have a line terminator — its length is determined by PAYLOAD_SIZE.
+
+### Response
+
+Every response has the following structure:
+
+```
+OK|ERR\n                                ← status line
+[DATA_LINES]                            ← zero or more data lines
+METRICS hits=<n> misses=<n> evictions=<n> hit_rate=<f>\n
+END\n                                   ← end of response marker
+```
+
+For responses that return rows, each row is preceded by its byte size:
+
+```
+OK\n
+ROWS <count>\n
+<row_size_bytes>\n
+<binary row data>
+<row_size_bytes>\n
+<binary row data>
+...
+METRICS hits=3 misses=1 evictions=0 hit_rate=0.750\n
+END\n
+```
+
+Error responses:
+
+```
+ERR <error_code> <human readable message>\n
+METRICS hits=0 misses=0 evictions=0 hit_rate=0.000\n
+END\n
+```
+
+### Error Codes
+
+| Code | Meaning |
+|------|---------|
+| `TABLE_NOT_FOUND` | Table does not exist |
+| `TABLE_EXISTS` | Table already exists |
+| `SCHEMA_MISMATCH` | Row data does not match table schema |
+| `POOL_FULL` | All frames pinned, cannot evict |
+| `INVALID_OP` | Unknown operation |
+| `INVALID_ARGS` | Wrong number or type of arguments |
+| `IO_ERROR` | Disk read/write failed |
+
+---
+
+## Operations
+
+---
+
+### PING
+
+Verify that the server is alive and responding.
+
+**Request:**
+```
+PING\n
+```
+
+**Response:**
+```
+OK\n
+PONG\n
+METRICS hits=0 misses=0 evictions=0 hit_rate=0.000\n
+END\n
+```
+
+**Notes:**
+- PING never fails unless the connection is broken.
+- Metrics reflect the current state of the buffer pool, not this operation.
+
+**Example:**
+```
+→ PING\n
+← OK\n
+  PONG\n
+  METRICS hits=0 misses=0 evictions=0 hit_rate=0.000\n
+  END\n
+```
+
+---
+
+### SCAN
+
+Read all rows from a table, page by page through the buffer pool.
+
+**Request:**
+```
+SCAN <table_name>\n
+```
+
+**Response:**
+```
+OK\n
+ROWS <count>\n
+<row_size>\n
+<binary row data>
+<row_size>\n
+<binary row data>
+...
+METRICS hits=<n> misses=<n> evictions=<n> hit_rate=<f>\n
+END\n
+```
+
+**Arguments:**
+- `table_name` — name of the table to scan (max 63 chars, ASCII)
+
+**Notes:**
+- Rows are returned in heap order (insertion order, not sorted).
+- Deleted rows (logical deletes) are skipped automatically.
+- Each row is a binary blob serialized by the schema layer.
+  The Python layer is responsible for deserializing using the table schema.
+- If the table is empty, ROWS 0 is returned with no row data.
+- The buffer pool is used — each page access updates hit/miss counters.
+
+**Errors:**
+- `TABLE_NOT_FOUND` if the table does not exist.
+
+**Example:**
+```
+→ SCAN users\n
+← OK\n
+  ROWS 2\n
+  12\n
+  <12 bytes: row 1>
+  12\n
+  <12 bytes: row 2>
+  METRICS hits=1 misses=2 evictions=0 hit_rate=0.333\n
+  END\n
+```
+
+---
+
+### SCHEMA
+
+Get the column definitions of a table.
+
+**Request:**
+```
+SCHEMA <table_name>\n
+```
+
+**Response:**
+```
+OK\n
+COLUMNS <count>\n
+<col_name>:<type>:<max_size>:<nullable>\n
+...
+METRICS hits=<n> misses=<n> evictions=<n> hit_rate=<f>\n
+END\n
+```
+
+**Arguments:**
+- `table_name` — name of the table (max 63 chars, ASCII)
+
+**Column line format:** `name:type:max_size:nullable:pk`
+| Field | Description |
+|-------|-------------|
+| `name` | column name |
+| `type` | INT, FLOAT, BOOL, or VARCHAR |
+| `max_size` | 0 for fixed types, max bytes for VARCHAR |
+| `nullable` | 1 if nullable, 0 if NOT NULL |
+| `pk` | 1 if primary key, 0 otherwise |
+
+**Notes:**
+- SCHEMA reads page 0 of the table file where the schema is stored.
+- The ServerStorage Python client caches schemas — SCHEMA is called
+  only once per table per session, then served from the local cache.
+- max_size is 0 for INT, FLOAT, and BOOL.
+
+**Errors:**
+- `TABLE_NOT_FOUND` if the table does not exist.
+
+**Example:**
+```
+→ SCHEMA users\n
+← OK\n
+  COLUMNS 4\n
+  id:INT:0:1:1\n
+  name:VARCHAR:64:0:0\n
+  age:INT:0:0:0\n
+  city:VARCHAR:64:0:0\n
+  METRICS hits=0 misses=1 evictions=0 hit_rate=0.000\n
+  END\n
+```
+
+---
+
+### GET
+
+Fetch a single row by its RowID.
+
+**Request:**
+```
+GET <table_name> <row_id>\n
+```
+
+**Response (found):**
+```
+OK\n
+ROWS 1\n
+<row_size>\n
+<binary row data>
+METRICS hits=<n> misses=<n> evictions=<n> hit_rate=<f>\n
+END\n
+```
+
+**Response (not found):**
+```
+OK\n
+ROWS 0\n
+METRICS hits=<n> misses=<n> evictions=<n> hit_rate=<f>\n
+END\n
+```
+
+**Arguments:**
+- `table_name` — name of the table
+- `row_id` — integer RowID encoded as (page_id << 16) | slot_id
+
+**Notes:**
+- GET decodes the RowID to find the exact page and slot — O(1) lookup.
+- A ROWS 0 response is not an error — it means the row was not found.
+
+**Errors:**
+- `TABLE_NOT_FOUND` if the table does not exist.
+- `INVALID_ARGS` if row_id is not a valid integer.
+
+**Example:**
+```
+→ GET users 65537\n
+← OK\n
+  ROWS 1\n
+  12\n
+  <12 bytes: row data>
+  METRICS hits=1 misses=0 evictions=0 hit_rate=1.000\n
+  END\n
+```
+
+---
+
+### CREATE
+
+Create a new table with a given schema.
+
+**Request:**
+```
+CREATE <table_name> <col1:type1> <col2:type2> ...\n
+```
+
+**Response:**
+```
+OK\n
+CREATED <table_name>\n
+METRICS hits=<n> misses=<n> evictions=<n> hit_rate=<f>\n
+END\n
+```
+
+**Arguments:**
+- `table_name` — name of the new table (max 63 chars)
+- `colN:typeN` — column definitions, space-separated
+
+**Supported types:**
+| Type | Description |
+|------|-------------|
+| `INT` | 32-bit signed integer |
+| `FLOAT` | 64-bit float |
+| `BOOL` | boolean (1 byte) |
+| `VARCHAR(n)` | variable-length string, max n bytes |
+
+**Errors:**
+- `TABLE_EXISTS` if a table with that name already exists.
+- `INVALID_ARGS` if any column definition is malformed.
+
+**Example:**
+```
+→ CREATE users id:INT name:VARCHAR(64) age:INT\n
+← OK\n
+  CREATED users\n
+  METRICS hits=0 misses=0 evictions=0 hit_rate=0.000\n
+  END\n
+```
+
+---
+
+### INSERT
+
+Insert a serialized row into a table.
+
+**Request:**
+```
+INSERT <table_name> <payload_size>\n
+<payload_size>\n
+<binary serialized row>
+```
+
+**Response:**
+```
+OK\n
+ROW_ID <row_id>\n
+METRICS hits=<n> misses=<n> evictions=<n> hit_rate=<f>\n
+END\n
+```
+
+**Arguments:**
+- `table_name` — name of the table
+- `payload_size` — size of the binary row in bytes
+
+**Notes:**
+- The binary payload is a row serialized by the Python schema layer
+  using the same format as `row_serialize` in schema.c.
+- The server validates payload size against the table schema.
+- On success, the assigned RowID is returned so Python can track it.
+
+**Errors:**
+- `TABLE_NOT_FOUND` if the table does not exist.
+- `SCHEMA_MISMATCH` if payload size does not match expected row size.
+- `IO_ERROR` if the page cannot be written.
+
+**Example:**
+```
+→ INSERT users 12\n
+  12\n
+  <12 bytes: serialized row>
+← OK\n
+  ROW_ID 65537\n
+  METRICS hits=0 misses=1 evictions=0 hit_rate=0.000\n
+  END\n
+```
+
+---
+
+### DELETE
+
+Mark a row as deleted by its RowID (logical delete).
+
+**Request:**
+```
+DELETE <table_name> <row_id>\n
+```
+
+**Response:**
+```
+OK\n
+DELETED 1\n
+METRICS hits=<n> misses=<n> evictions=<n> hit_rate=<f>\n
+END\n
+```
+
+**Arguments:**
+- `table_name` — name of the table
+- `row_id` — RowID of the row to delete
+
+**Notes:**
+- Delete is logical — the slot is marked as deleted in the slotted page.
+  Physical space is not reclaimed immediately (no compaction in v1).
+- DELETED 0 means the row was not found (not an error).
+
+**Errors:**
+- `TABLE_NOT_FOUND` if the table does not exist.
+- `INVALID_ARGS` if row_id is not a valid integer.
+
+**Example:**
+```
+→ DELETE users 65537\n
+← OK\n
+  DELETED 1\n
+  METRICS hits=1 misses=0 evictions=0 hit_rate=1.000\n
+  END\n
+```
+
+---
+
+### UPDATE
+
+Replace a row's data in place by RowID.
+
+**Request:**
+```
+UPDATE <table_name> <row_id> <payload_size>\n
+<payload_size>\n
+<binary serialized row>
+```
+
+**Response:**
+```
+OK\n
+UPDATED 1\n
+METRICS hits=<n> misses=<n> evictions=<n> hit_rate=<f>\n
+END\n
+```
+
+**Arguments:**
+- `table_name` — name of the table
+- `row_id` — RowID of the row to update
+- `payload_size` — size of the new binary row in bytes
+
+**Notes:**
+- The new row must have the same size as the original (fixed-size schema).
+- The page is marked dirty in the buffer pool after the update.
+- UPDATED 0 means the row was not found.
+
+**Errors:**
+- `TABLE_NOT_FOUND` if the table does not exist.
+- `SCHEMA_MISMATCH` if payload size does not match.
+- `INVALID_ARGS` if row_id is not valid.
+
+---
+
+### POLICY
+
+Change the buffer pool eviction policy without restarting the server.
+
+**Request:**
+```
+POLICY <policy_name>\n
+```
+
+**Response:**
+```
+OK\n
+POLICY_SET <policy_name>\n
+METRICS hits=<n> misses=<n> evictions=<n> hit_rate=<f>\n
+END\n
+```
+
+**Supported policies:**
+| Name | Description |
+|------|-------------|
+| `nocache` | Always evicts first OCCUPIED frame (baseline) |
+| `clock` | Clock sweep with ref_bit (PostgreSQL-style) |
+| `lru` | Least Recently Used |
+
+**Notes:**
+- Changing policy resets the eviction strategy immediately.
+- In-flight pins are not affected — pinned frames stay pinned.
+- Metrics are NOT reset when the policy changes.
+  Use RESET_METRICS explicitly if needed.
+- OPT policy is not available via POLICY command (requires offline trace).
+
+**Errors:**
+- `INVALID_ARGS` if policy_name is not one of the supported values.
+
+**Example:**
+```
+→ POLICY lru\n
+← OK\n
+  POLICY_SET lru\n
+  METRICS hits=18 misses=6 evictions=2 hit_rate=0.750\n
+  END\n
+```
+
+---
+
+### METRICS
+
+Request current buffer pool metrics explicitly.
+
+**Request:**
+```
+METRICS\n
+```
+
+**Response:**
+```
+OK\n
+hits=<n>\n
+misses=<n>\n
+evictions=<n>\n
+hit_rate=<f>\n
+METRICS hits=<n> misses=<n> evictions=<n> hit_rate=<f>\n
+END\n
+```
+
+**Notes:**
+- Returns the same metrics that are appended to every response,
+  but as the primary payload rather than a footer.
+- Useful for the monitor to poll metrics between experiments.
+
+---
+
+### RESET_METRICS
+
+Reset all buffer pool metric counters to zero.
+
+**Request:**
+```
+RESET_METRICS\n
+```
+
+**Response:**
+```
+OK\n
+METRICS hits=0 misses=0 evictions=0 hit_rate=0.000\n
+END\n
+```
+
+**Notes:**
+- Used between experiments to get clean measurements.
+- Does not affect buffer pool contents — pages already in memory stay.
+
+---
+
+## Versioning
+
+This document describes **MINIDBMS-RESP v1**.
+
+Future versions may add:
+- Pipelining (multiple requests before reading responses)
+- Concurrency (multiple simultaneous connections)
+- PostgreSQL wire protocol compatibility layer
+- OPT policy via POLICY command with trace upload
+- FETCH operation for direct page access (for index experiments)
+
+## Changelog
+
+| Version | Date | Changes |
+|---------|------|---------|
+| v1.0 | 2026-03 | Initial specification: PING, SCAN, GET, CREATE, INSERT, DELETE, UPDATE, POLICY, METRICS, RESET_METRICS |
+| v1.1 | 2026-03 | Add SCHEMA operation — column definitions with client-side caching |
+| v1.2 | 2026-03 | SCHEMA column format includes pk field |

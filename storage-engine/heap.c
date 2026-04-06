@@ -123,6 +123,58 @@ int scan_table_raw(const char *data_dir, const char *table,
     return num_rows;
 }
 
+int heap_insert_bm(const char *data_dir, const char *table_name,
+                   const void *data, int size, BufferManager *bm) {
+    if (!data_dir || !table_name || !data || size <= 0 || !bm)
+        return -1;
+
+    int num_pages = get_num_pages(data_dir, table_name);
+    printf("[heap_insert_bm] table=%s num_pages=%d size=%d\n",
+           table_name, num_pages, size);
+
+
+    // Primera pasada — buscar espacio en páginas existentes
+    for (int page_id = 1; page_id < num_pages; page_id++) {
+        char *page = bm_fetch_page(bm, table_name, page_id);
+        if (!page) continue;
+        printf("[heap_insert_bm] fetch page_id=%d page=%p\n", page_id, page);
+
+        int slot_id = insert_row(page, data, size);
+
+        if (slot_id >= 0) {
+            bm_unpin_page(bm, table_name, page_id, 1);  // dirty
+            return encode_rowid(page_id, slot_id);
+        }
+
+        bm_unpin_page(bm, table_name, page_id, 0);  // no dirty
+    }
+
+    // Ninguna página tiene espacio — crear página nueva en disco primero
+    int new_page_id = (num_pages >= 1) ? num_pages : 1;
+    printf("[heap_insert_bm] creating new page_id=%d\n", new_page_id);
+
+    // Inicializar y escribir página vacía en disco para que load_page no falle
+    char empty_page[PAGE_SIZE];
+    init_page(empty_page);
+    int wr = write_page(data_dir, table_name, new_page_id, empty_page);
+    printf("[heap_insert_bm] write_page result=%d\n", wr);
+
+    // Ahora sí podemos cargarla via buffer pool
+    char *page = bm_fetch_page(bm, table_name, new_page_id);
+    printf("[heap_insert_bm] fetch new page=%p\n", page);
+    if (!page) return -1;
+
+    int slot_id = insert_row(page, data, size);
+
+    if (slot_id < 0) {
+        bm_unpin_page(bm, table_name, new_page_id, 0);
+        return -1;
+    }
+
+    bm_unpin_page(bm, table_name, new_page_id, 1);  // dirty
+    return encode_rowid(new_page_id, slot_id);
+}
+
 void debug_print_table(const char *data_dir, const char *table) {
     const char *dir = data_dir ? data_dir : DEFAULT_DATA_DIR;
     int num_pages = get_num_pages(dir, table);

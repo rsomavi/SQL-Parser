@@ -82,7 +82,8 @@ static int bm_get_frame(BufferManager *bm,
 
     // Step 3: load page from disk into the frame
     char page_buf[PAGE_SIZE];
-    load_page(bm->data_dir, table_name, page_id, page_buf);
+    if (load_page(bm->data_dir, table_name, page_id, page_buf) < 0)
+        return -1;
 
     bp_load_frame(&bm->pool, frame_id, table_name, page_id, page_buf);
 

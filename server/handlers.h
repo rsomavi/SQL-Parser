@@ -3,6 +3,7 @@
 
 #include "server.h"
 #include "protocol.h"
+#include "../storage-engine/heap.h"
 
 // ============================================================================
 // Request dispatcher
@@ -24,5 +25,7 @@ void handler_scan(Server *srv, int client_fd, Request *req);
 void handler_schema(Server *srv, int client_fd, Request *req);
 
 void handler_create(Server *srv, int client_fd, Request *req);
+
+void handler_insert(Server *srv, int client_fd, Request *req);
 
 #endif

@@ -31,6 +31,8 @@ static int read_line(int fd, char *buf, int maxlen) {
 int protocol_read_request(int client_fd, Request *req) {
     if (client_fd < 0 || !req) return -1;
 
+    memset(req, 0, sizeof(Request));
+
     char line[1024];
     if (read_line(client_fd, line, sizeof(line)) < 0)
         return -1;
@@ -72,6 +74,26 @@ int protocol_read_request(int client_fd, Request *req) {
             strncpy(req->args, line + skip, sizeof(req->args) - 1);
             req->args[sizeof(req->args) - 1] = '\0';
         }
+        return 0;
+    } else if (strncmp(line, "INSERT ", 7) == 0) { // INSERT <table_name> <payload_size>\n
+        req->op = OP_INSERT;                       // <payload_size>\n
+        req->table_name[0] = '\0';                 //<binary serialized row>
+        req->args[0]       = '\0';
+        req->payload_size  = 0;
+
+        sscanf(line + 7, "%63s %d", req->table_name, &req->payload_size);
+
+        if (req->payload_size > 0 &&
+            req->payload_size < (int)sizeof(req->payload)) {
+            int  total = 0;
+            while (total < req->payload_size) {
+                int r = read(client_fd, req->payload + total,
+                            req->payload_size - total);
+                if (r <= 0) return -1;
+                total += r;
+            }
+        }
+
         return 0;
     }
 

@@ -40,6 +40,9 @@ void handler_dispatch(Server *srv, int client_fd, Request *req) {
         case OP_CREATE:
             handler_create(srv, client_fd, req);
             break;
+        case OP_INSERT:
+            handler_insert(srv, client_fd, req);
+            break;
         case OP_UNKNOWN:
         default: {
             ResponseBuf rb;
@@ -228,6 +231,7 @@ void handler_create(Server *srv, int client_fd, Request *req) {
     ResponseBuf rb;
     protocol_response_init(&rb);
 
+    // No table name
     if (req->table_name[0] == '\0') {
         protocol_response_append(&rb, "ERR INVALID_ARGS missing table name\n");
         append_metrics(&rb, srv);
@@ -327,6 +331,59 @@ void handler_create(Server *srv, int client_fd, Request *req) {
     snprintf(created_line, sizeof(created_line),
              "OK\nCREATED %s\n", req->table_name);
     protocol_response_append(&rb, created_line);
+    append_metrics(&rb, srv);
+    protocol_response_append(&rb, "END\n");
+    protocol_response_send(&rb, client_fd);
+    protocol_response_free(&rb);
+}
+
+void handler_insert(Server *srv, int client_fd, Request *req) {
+    ResponseBuf rb;
+    protocol_response_init(&rb);
+
+    if (req->table_name[0] == '\0') {
+        protocol_response_append(&rb, "ERR INVALID_ARGS missing table name\n");
+        append_metrics(&rb, srv);
+        protocol_response_append(&rb, "END\n");
+        protocol_response_send(&rb, client_fd);
+        protocol_response_free(&rb);
+        return;
+    }
+
+    if (req->payload_size <= 0) {
+        protocol_response_append(&rb, "ERR INVALID_ARGS missing payload\n");
+        append_metrics(&rb, srv);
+        protocol_response_append(&rb, "END\n");
+        protocol_response_send(&rb, client_fd);
+        protocol_response_free(&rb);
+        return;
+    }
+
+    if (get_num_pages(srv->data_dir, req->table_name) == 0) {
+        protocol_response_append(&rb, "ERR TABLE_NOT_FOUND table does not exist\n");
+        append_metrics(&rb, srv);
+        protocol_response_append(&rb, "END\n");
+        protocol_response_send(&rb, client_fd);
+        protocol_response_free(&rb);
+        return;
+    }
+
+    int row_id = heap_insert_bm(srv->data_dir, req->table_name,
+                                req->payload, req->payload_size,
+                                &srv->bm);
+
+    if (row_id < 0) {
+        protocol_response_append(&rb, "ERR IO_ERROR failed to insert row\n");
+        append_metrics(&rb, srv);
+        protocol_response_append(&rb, "END\n");
+        protocol_response_send(&rb, client_fd);
+        protocol_response_free(&rb);
+        return;
+    }
+
+    char row_id_line[64];
+    snprintf(row_id_line, sizeof(row_id_line), "OK\nROW_ID %d\n", row_id);
+    protocol_response_append(&rb, row_id_line);
     append_metrics(&rb, srv);
     protocol_response_append(&rb, "END\n");
     protocol_response_send(&rb, client_fd);
