@@ -6,6 +6,7 @@
 
 import sys
 import os
+import time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from storage_server import ServerStorage
@@ -42,7 +43,8 @@ def sql(executor, planner, parser, query):
     plan = planner.plan(ast)
     return executor.execute(plan)
 
-TABLE = "test_insert_tmp"
+import time
+TABLE = f"test_insert_{int(time.time())}"
 
 def setup():
     """Crea la tabla de test. Si ya existe la ignora."""

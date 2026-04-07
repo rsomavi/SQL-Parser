@@ -1,5 +1,5 @@
 # test_create.py — ejecutar desde sql-engine/
-import sys, os
+import sys, os, time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from parser import get_parser
@@ -12,7 +12,8 @@ executor = QueryExecutor(storage)
 planner  = QueryPlanner()
 parser   = get_parser()
 
-ast  = parser.parse("CREATE TABLE ciudades (id INT PRIMARY KEY, nombre VARCHAR(100) NOT NULL, poblacion INT)")
+table = f"test_create_{int(time.time())}"
+ast  = parser.parse(f"CREATE TABLE {table} (id INT PRIMARY KEY, nombre VARCHAR(100) NOT NULL, poblacion INT)")
 plan = planner.plan(ast)
 result = executor.execute(plan)
 print(result)

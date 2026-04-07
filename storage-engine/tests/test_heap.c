@@ -29,8 +29,8 @@ static char TEST_DIR[64];
 
 #define ASSERT_INT(expected, actual, msg) do { \
     if ((expected) != (actual)) { \
-        printf("    FAIL: %s — esperado %d, obtenido %d (linea %d)\n", \
-               msg, expected, actual, __LINE__); \
+        printf("    FAIL: %s — esperado %ld, obtenido %ld (linea %d)\n", \
+            msg, (long)(expected), (long)(actual), __LINE__); \
         tests_failed++; \
         return 0; \
     } \

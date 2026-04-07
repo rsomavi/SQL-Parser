@@ -2,8 +2,9 @@
 // Verifica que los cuatro módulos funcionan correctamente juntos:
 // schema_save (page 0) + insert_into_table (pages 1+) + recover + row_deserialize
 //
-// Compilar: gcc -Wall -Wextra -g -o test_integration test_integration.c \
-//               ../schema.c ../heap.c ../page.c ../disk.c
+// Compilar: gcc -Wall -Wextra -g -o test_integration test_integration.c
+//           ../schema.c ../heap.c ../page.c ../disk.c
+//           ../buffer_manager.c ../buffer_frame.c ../page_table.c ../eviction_policy.c
 // Ejecutar: ./test_integration
 
 #include <stdio.h>

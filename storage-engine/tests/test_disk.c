@@ -69,46 +69,6 @@ static void cleanup_files(void) {
     system(cmd);
 }
 
-// Ejecuta una función en un proceso hijo y retorna 1 si ese proceso
-// termina con código de salida != 0 (es decir, llamó a exit(1))
-static int exits_with_failure(void (*fn)(void)) {
-    pid_t pid = fork();
-    if (pid == 0) {
-        freopen("/dev/null", "w", stderr);
-        fn();
-        exit(0); // no debería llegar aquí si fn() llama exit(1)
-    }
-    int status;
-    waitpid(pid, &status, 0);
-    return WIFEXITED(status) && WEXITSTATUS(status) != 0;
-}
-
-// Helpers para los casos que hacen exit(1) — necesitan ser funciones globales
-static void _helper_load_nonexistent(void) {
-    char buf[PAGE_SIZE];
-    load_page(TEST_DIR_GLOBAL, "tabla_que_no_existe", 0, buf);
-}
-
-static void _helper_load_out_of_bounds(void) {
-    char buf[PAGE_SIZE];
-    // Escribe solo página 0, intenta leer página 1
-    char page[PAGE_SIZE];
-    memset(page, 0xAA, PAGE_SIZE);
-    write_page(TEST_DIR_GLOBAL, "oob_table", 0, page);
-    load_page(TEST_DIR_GLOBAL, "oob_table", 1, buf);
-}
-
-static void _helper_load_page_2_of_1(void) {
-    char buf[PAGE_SIZE];
-    char page[PAGE_SIZE];
-    memset(page, 0xBB, PAGE_SIZE);
-    write_page(TEST_DIR_GLOBAL, "p2of1", 0, page);
-    write_page(TEST_DIR_GLOBAL, "p2of1", 1, page);
-    // Solo hay 2 páginas (0 y 1), intentar leer página 2 debe fallar
-    load_page(TEST_DIR_GLOBAL, "p2of1", 2, buf);
-}
-
-
 // ============================================================================
 // BLOQUE 1: get_num_pages
 // ============================================================================
@@ -432,21 +392,30 @@ static int test_binary_middle_page_id(void) {
 // BLOQUE 5: load_page — validación de bounds (usan fork)
 // ============================================================================
 
-static int test_load_nonexistent_file_exits(void) {
-    ASSERT(exits_with_failure(_helper_load_nonexistent),
-           "load_page sobre archivo inexistente hace exit(1)");
+static int test_load_nonexistent_file_returns_error(void) {
+    char buf[PAGE_SIZE];
+    int r = load_page(TEST_DIR, "tabla_que_no_existe", 0, buf);
+    ASSERT(r == -1, "load_page sobre archivo inexistente devuelve -1");
     return 1;
 }
 
-static int test_load_out_of_bounds_exits(void) {
-    ASSERT(exits_with_failure(_helper_load_out_of_bounds),
-           "load_page con page_id >= num_pages hace exit(1)");
+static int test_load_out_of_bounds_returns_error(void) {
+    char page[PAGE_SIZE];
+    memset(page, 0xAA, PAGE_SIZE);
+    write_page(TEST_DIR, "oob_table", 0, page);
+    char buf[PAGE_SIZE];
+    int r = load_page(TEST_DIR, "oob_table", 1, buf);
+    ASSERT(r == -1, "load_page con page_id >= num_pages devuelve -1");
     return 1;
 }
 
-static int test_load_page_2_of_2_exits(void) {
-    ASSERT(exits_with_failure(_helper_load_page_2_of_1),
-           "load_page con page_id == num_pages hace exit(1)");
+static int test_load_page_2_of_1_returns_error(void) {
+    char page[PAGE_SIZE];
+    memset(page, 0xBB, PAGE_SIZE);
+    write_page(TEST_DIR, "oob2_table", 0, page);
+    char buf[PAGE_SIZE];
+    int r = load_page(TEST_DIR, "oob2_table", 1, buf);
+    ASSERT(r == -1, "load_page con page_id == num_pages devuelve -1");
     return 1;
 }
 
@@ -655,10 +624,10 @@ int main(void) {
     RUN_TEST(test_binary_all_values);
     RUN_TEST(test_binary_middle_page_id);
 
-    printf("\n-- Bloque 5: load_page bounds (fork) --\n");
-    RUN_TEST(test_load_nonexistent_file_exits);
-    RUN_TEST(test_load_out_of_bounds_exits);
-    RUN_TEST(test_load_page_2_of_2_exits);
+    printf("\n-- Bloque 5: load_page bounds --\n");
+    RUN_TEST(test_load_nonexistent_file_returns_error);
+    RUN_TEST(test_load_out_of_bounds_returns_error);
+    RUN_TEST(test_load_page_2_of_1_returns_error);
     RUN_TEST(test_load_valid_last_page);
 
     printf("\n-- Bloque 6: stress --\n");
