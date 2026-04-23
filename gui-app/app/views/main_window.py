@@ -224,7 +224,7 @@ class MainWindow(tk.Tk):
                 result = self.controller.execute_query(self.current_config, query)
                 self.after(0, lambda: self._apply_query_result(result))
             except Exception as exc:
-                self.after(0, lambda: self._handle_query_error(exc))
+                self.after(0, lambda e=exc: self._handle_query_error(e))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -298,7 +298,7 @@ class MainWindow(tk.Tk):
                     lambda: self._apply_benchmark_result(summary, saved_paths),
                 )
             except Exception as exc:
-                self.after(0, lambda: self._handle_benchmark_error(exc))
+                self.after(0, lambda e=exc: self._handle_benchmark_error(e))
 
         threading.Thread(target=worker, daemon=True).start()
 

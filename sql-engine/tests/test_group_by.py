@@ -365,7 +365,7 @@ def run_all_tests():
             print(f"  -> {result['error']}")
             failed += 1
         else:
-            print(f"✓ {description}")
+            print(f" {description}")
             print(f"  Query: {query}")
             for row in result["result"]:
                 print(f"    {row}")
