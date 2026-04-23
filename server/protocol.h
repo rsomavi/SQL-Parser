@@ -14,6 +14,7 @@ typedef enum {
     OP_CREATE,
     OP_INSERT,
     OP_DELETE,
+    OP_RESET_METRICS,
     OP_UNKNOWN
 } OperationType;
 

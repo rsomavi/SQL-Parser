@@ -108,6 +108,9 @@ int protocol_read_request(int client_fd, Request *req) {
             req->args[sizeof(req->args) - 1] = '\0';
         }
         return 0;
+    } else if (strcmp(line, "RESET_METRICS") == 0) {
+        req->op = OP_RESET_METRICS;
+        return 0;
     }
 
 

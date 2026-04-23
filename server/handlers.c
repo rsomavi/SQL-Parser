@@ -46,6 +46,9 @@ void handler_dispatch(Server *srv, int client_fd, Request *req) {
         case OP_DELETE:
             handler_delete(srv, client_fd, req);
             break;
+        case OP_RESET_METRICS:
+            handler_reset_metrics(srv, client_fd);
+            break;
         case OP_UNKNOWN:
         default: {
             ResponseBuf rb;
@@ -525,6 +528,17 @@ void handler_delete(Server *srv, int client_fd, Request *req) {
     char deleted_line[64];
     snprintf(deleted_line, sizeof(deleted_line), "OK\nDELETED %d\n", deleted);
     protocol_response_append(&rb, deleted_line);
+    append_metrics(&rb, srv);
+    protocol_response_append(&rb, "END\n");
+    protocol_response_send(&rb, client_fd);
+    protocol_response_free(&rb);
+}
+
+void handler_reset_metrics(Server *srv, int client_fd) {
+    ResponseBuf rb;
+    protocol_response_init(&rb);
+    bm_reset_metrics(&srv->bm);
+    protocol_response_append(&rb, "OK\n");
     append_metrics(&rb, srv);
     protocol_response_append(&rb, "END\n");
     protocol_response_send(&rb, client_fd);
