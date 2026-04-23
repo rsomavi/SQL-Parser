@@ -55,11 +55,11 @@ METRICS hits=<n> misses=<n> evictions=<n> hit_rate=<f>\n
 END\n                                   ← end of response marker
 ```
 
-For responses that return rows, each row is preceded by its byte size:
+For responses that return rows, each row is preceded by its byte size.
+The client reads rows until it encounters the `METRICS` line:
 
 ```
 OK\n
-ROWS <count>\n
 <row_size_bytes>\n
 <binary row data>
 <row_size_bytes>\n
@@ -68,6 +68,10 @@ ROWS <count>\n
 METRICS hits=3 misses=1 evictions=0 hit_rate=0.750\n
 END\n
 ```
+
+The `ROWS <count>` header was removed in v1.4. The client determines
+the row count by reading until `METRICS`. This eliminates the double
+buffer pool scan that previously generated artificial cache hits.
 
 Error responses:
 
@@ -139,7 +143,6 @@ SCAN <table_name>\n
 **Response:**
 ```
 OK\n
-ROWS <count>\n
 <row_size>\n
 <binary row data>
 <row_size>\n
@@ -157,8 +160,19 @@ END\n
 - Deleted rows (logical deletes) are skipped automatically.
 - Each row is a binary blob serialized by the schema layer.
   The Python layer is responsible for deserializing using the table schema.
-- If the table is empty, ROWS 0 is returned with no row data.
+- If the table is empty, the response goes directly from `OK\n` to `METRICS`.
 - The buffer pool is used — each page access updates hit/miss counters.
+- There is no `ROWS <count>` header. The client reads rows until it
+  encounters the `METRICS` line. This ensures a single buffer pool pass
+  and eliminates artificial cache hits from a preliminary count scan.
+
+**Design decision (v1.4):**
+The original protocol (v1.0–v1.3) sent `ROWS <count>` before the rows,
+requiring two full passes over the buffer pool — one to count, one to send.
+This generated artificial hits on the second pass, corrupting cache metrics.
+In v1.4 the count header is removed. The server makes a single pass,
+copies rows to a temporary memory buffer, then sends them. The client
+counts rows as it receives them.
 
 **Errors:**
 - `TABLE_NOT_FOUND` if the table does not exist.
@@ -167,12 +181,11 @@ END\n
 ```
 → SCAN users\n
 ← OK\n
-  ROWS 2\n
   12\n
   <12 bytes: row 1>
   12\n
   <12 bytes: row 2>
-  METRICS hits=1 misses=2 evictions=0 hit_rate=0.333\n
+  METRICS hits=0 misses=2 evictions=0 hit_rate=0.000\n
   END\n
 ```
 
@@ -565,3 +578,5 @@ Future versions may add:
 | v1.0 | 2026-03 | Initial specification: PING, SCAN, GET, CREATE, INSERT, DELETE, UPDATE, POLICY, METRICS, RESET_METRICS |
 | v1.1 | 2026-03 | Add SCHEMA operation — column definitions with client-side caching |
 | v1.2 | 2026-03 | SCHEMA column format includes pk field |
+| v1.3 | 2026-04 | DELETE by ROW_ID — logical delete, slot marked in slotted page. WHERE evaluation delegated to storage engine |
+| v1.4 | 2026-04 | Remove ROWS count header from SCAN — single buffer pool pass eliminates artificial cache hits |
