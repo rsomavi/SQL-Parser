@@ -61,11 +61,10 @@ void scan_table(const char *data_dir, const char *table) {
         PageHeader *header = (PageHeader *)page;
         printf("num_slots: %d\n", header->num_slots);
         
-        // Compute slot_dir once
-        int *slot_dir = (int *)(page + sizeof(PageHeader));
-        
+        SlotEntry *slot_dir = (SlotEntry *)(page + sizeof(PageHeader));
+
         for (int slot_id = 0; slot_id < header->num_slots; slot_id++) {
-            if (slot_dir[slot_id] == -1) {
+            if (slot_dir[slot_id].state == SLOT_DELETED) {
                 printf("  slot %d: DELETED\n", slot_id);
                 continue;
             }
@@ -103,11 +102,11 @@ int scan_table_raw(const char *data_dir, const char *table,
         char *page = page_bufs[page_buf_idx++];
         load_page(dir, table, page_id, page);
 
-        PageHeader *header  = (PageHeader *)page;
-        int        *slot_dir = (int *)(page + sizeof(PageHeader));
+        PageHeader *header   = (PageHeader *)page;
+        SlotEntry  *slot_dir = (SlotEntry *)(page + sizeof(PageHeader));
 
         for (int slot_id = 0; slot_id < header->num_slots && num_rows < max_rows; slot_id++) {
-            if (slot_dir[slot_id] == -1) continue;  // deleted slot
+            if (slot_dir[slot_id].state == SLOT_DELETED) continue;
 
             int   row_size = get_row_size(page, slot_id);
             char *row      = read_row(page, slot_id);
@@ -129,15 +128,11 @@ int heap_insert_bm(const char *data_dir, const char *table_name,
         return -1;
 
     int num_pages = get_num_pages(data_dir, table_name);
-    printf("[heap_insert_bm] table=%s num_pages=%d size=%d\n",
-           table_name, num_pages, size);
-
 
     // Primera pasada — buscar espacio en páginas existentes
     for (int page_id = 1; page_id < num_pages; page_id++) {
         char *page = bm_fetch_page(bm, table_name, page_id);
         if (!page) continue;
-        printf("[heap_insert_bm] fetch page_id=%d page=%p\n", page_id, page);
 
         int slot_id = insert_row(page, data, size);
 
@@ -157,11 +152,9 @@ int heap_insert_bm(const char *data_dir, const char *table_name,
     char empty_page[PAGE_SIZE];
     init_page(empty_page);
     int wr = write_page(data_dir, table_name, new_page_id, empty_page);
-    printf("[heap_insert_bm] write_page result=%d\n", wr);
 
     // Ahora sí podemos cargarla via buffer pool
     char *page = bm_fetch_page(bm, table_name, new_page_id);
-    printf("[heap_insert_bm] fetch new page=%p\n", page);
     if (!page) return -1;
 
     int slot_id = insert_row(page, data, size);
@@ -207,11 +200,11 @@ int heap_delete_bm(const char *data_dir, const char *table_name,
         if (!page) continue;
 
         PageHeader *header   = (PageHeader *)page;
-        int        *slot_dir = (int *)(page + sizeof(PageHeader));
+        SlotEntry  *slot_dir = (SlotEntry *)(page + sizeof(PageHeader));
         int         dirty    = 0;
 
         for (int slot_id = 0; slot_id < header->num_slots; slot_id++) {
-            if (slot_dir[slot_id] == -1) continue;
+            if (slot_dir[slot_id].state == SLOT_DELETED) continue;
 
             int   row_size = get_row_size(page, slot_id);
             char *row      = read_row(page, slot_id);

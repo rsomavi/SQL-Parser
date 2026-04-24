@@ -126,10 +126,10 @@ void handler_scan(Server *srv, int client_fd, Request *req) {
         if (!page) continue;
 
         PageHeader *header   = (PageHeader *)page;
-        int        *slot_dir = (int *)(page + sizeof(PageHeader));
+        SlotEntry  *slot_dir = (SlotEntry *)(page + sizeof(PageHeader));
 
         for (int slot_id = 0; slot_id < header->num_slots; slot_id++) {
-            if (slot_dir[slot_id] == -1) continue;
+            if (slot_dir[slot_id].state == SLOT_DELETED) continue;
 
             int   sz  = get_row_size(page, slot_id);
             char *row = read_row(page, slot_id);
@@ -485,11 +485,11 @@ void handler_delete(Server *srv, int client_fd, Request *req) {
         if (!page) continue;
 
         PageHeader *header   = (PageHeader *)page;
-        int        *slot_dir = (int *)(page + sizeof(PageHeader));
+        SlotEntry  *slot_dir = (SlotEntry *)(page + sizeof(PageHeader));
         int         dirty    = 0;
 
         for (int slot = 0; slot < header->num_slots; slot++) {
-            if (slot_dir[slot] == -1) continue;
+            if (slot_dir[slot].state == SLOT_DELETED) continue;
 
             int   row_size = get_row_size(page, slot);
             char *row      = read_row(page, slot);
