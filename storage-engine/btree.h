@@ -4,6 +4,7 @@
 #include "page.h"
 
 #define BTREE_ORDER 100
+#define BTREE_MAX_HEIGHT 32
 
 #define BTREE_INTERNAL 0
 #define BTREE_LEAF     1
@@ -33,5 +34,6 @@ int btree_write_node(int fd, int page_id, const BTreeNode *node);
 int btree_alloc_page(int fd, BTreeMeta *meta);
 int btree_init(const char *data_dir, const char *table_name);
 int btree_search(int fd, const BTreeMeta *meta, int key);
+int btree_insert(int fd, BTreeMeta *meta, int key, int row_id);
 
 #endif /* BTREE_H */

@@ -9,6 +9,42 @@
 
 #define BTREE_KEY_TYPE_INT 0
 
+static void leaf_insert_sorted(BTreeNode *leaf, int key, int row_id) {
+    int index;
+
+    index = leaf->n_keys;
+    while (index > 0 && leaf->keys[index - 1] > key) {
+        leaf->keys[index] = leaf->keys[index - 1];
+        leaf->row_ids[index] = leaf->row_ids[index - 1];
+        index--;
+    }
+
+    leaf->keys[index] = key;
+    leaf->row_ids[index] = row_id;
+    leaf->n_keys++;
+}
+
+static void internal_insert_sorted(BTreeNode *node, int key, int right_child) {
+    int index;
+
+    index = 0;
+    while (index < node->n_keys && node->keys[index] < key) {
+        index++;
+    }
+
+    for (int i = node->n_keys; i > index; i--) {
+        node->keys[i] = node->keys[i - 1];
+    }
+
+    for (int i = node->n_keys + 1; i > index + 1; i--) {
+        node->children[i] = node->children[i - 1];
+    }
+
+    node->keys[index] = key;
+    node->children[index + 1] = right_child;
+    node->n_keys++;
+}
+
 static int btree_page_offset(int page_id, off_t *offset) {
     if (page_id < 0 || offset == NULL) {
         return -1;
@@ -270,4 +306,243 @@ int btree_search(int fd, const BTreeMeta *meta, int key) {
             return -1;
         }
     }
+}
+
+int btree_insert(int fd, BTreeMeta *meta, int key, int row_id) {
+    BTreeNode node;
+    int ancestor_stack[BTREE_MAX_HEIGHT];
+    int ancestor_size = 0;
+    int current_page_id;
+    int left_page_id;
+    int right_page_id;
+    int separator_key;
+
+    if (fd < 0 || meta == NULL || meta->root_page_id <= 0 || meta->key_type != BTREE_KEY_TYPE_INT) {
+        return -1;
+    }
+
+    current_page_id = meta->root_page_id;
+
+    while (1) {
+        int index;
+
+        if (btree_read_node(fd, current_page_id, &node) != 0) {
+            return -1;
+        }
+
+        if (node.type == BTREE_LEAF) {
+            break;
+        }
+
+        if (node.type != BTREE_INTERNAL || ancestor_size >= BTREE_MAX_HEIGHT) {
+            return -1;
+        }
+
+        ancestor_stack[ancestor_size++] = current_page_id;
+
+        index = 0;
+        while (index < node.n_keys && key >= node.keys[index]) {
+            index++;
+        }
+
+        current_page_id = node.children[index];
+        if (current_page_id <= 0) {
+            return -1;
+        }
+    }
+
+    for (int i = 0; i < node.n_keys; i++) {
+        if (node.keys[i] == key) {
+            return 1;
+        }
+    }
+
+    if (node.n_keys < BTREE_ORDER) {
+        leaf_insert_sorted(&node, key, row_id);
+        meta->n_entries++;
+        if (btree_write_node(fd, current_page_id, &node) != 0 || btree_write_meta(fd, meta) != 0) {
+            return -1;
+        }
+        return 0;
+    }
+
+    {
+        BTreeNode right;
+        int temp_keys[BTREE_ORDER + 1];
+        int temp_row_ids[BTREE_ORDER + 1];
+        int insert_index;
+        int right_leaf_page_id;
+        int mid = BTREE_ORDER / 2;
+
+        memset(&right, 0, sizeof(right));
+        right.type = BTREE_LEAF;
+        right.next_leaf = -1;
+
+        insert_index = 0;
+        while (insert_index < node.n_keys && node.keys[insert_index] < key) {
+            insert_index++;
+        }
+
+        for (int i = 0, j = 0; i < BTREE_ORDER + 1; i++) {
+            if (i == insert_index) {
+                temp_keys[i] = key;
+                temp_row_ids[i] = row_id;
+            } else {
+                temp_keys[i] = node.keys[j];
+                temp_row_ids[i] = node.row_ids[j];
+                j++;
+            }
+        }
+
+        memset(node.keys, 0, sizeof(node.keys));
+        memset(node.row_ids, 0, sizeof(node.row_ids));
+        node.n_keys = mid;
+        for (int i = 0; i < mid; i++) {
+            node.keys[i] = temp_keys[i];
+            node.row_ids[i] = temp_row_ids[i];
+        }
+
+        right.n_keys = BTREE_ORDER + 1 - mid;
+        for (int i = 0; i < right.n_keys; i++) {
+            right.keys[i] = temp_keys[mid + i];
+            right.row_ids[i] = temp_row_ids[mid + i];
+        }
+
+        right_leaf_page_id = btree_alloc_page(fd, meta);
+        if (right_leaf_page_id < 0) {
+            return -1;
+        }
+
+        right.next_leaf = node.next_leaf;
+        node.next_leaf = right_leaf_page_id;
+
+        if (btree_write_node(fd, current_page_id, &node) != 0 ||
+            btree_write_node(fd, right_leaf_page_id, &right) != 0) {
+            return -1;
+        }
+
+        left_page_id = current_page_id;
+        right_page_id = right_leaf_page_id;
+        separator_key = right.keys[0];
+    }
+
+    while (1) {
+        BTreeNode parent;
+
+        if (ancestor_size == 0) {
+            BTreeNode root;
+            int new_root_page_id;
+
+            memset(&root, 0, sizeof(root));
+            root.type = BTREE_INTERNAL;
+            root.n_keys = 1;
+            root.keys[0] = separator_key;
+            root.children[0] = left_page_id;
+            root.children[1] = right_page_id;
+            root.next_leaf = -1;
+
+            new_root_page_id = btree_alloc_page(fd, meta);
+            if (new_root_page_id < 0) {
+                return -1;
+            }
+
+            if (btree_write_node(fd, new_root_page_id, &root) != 0) {
+                return -1;
+            }
+
+            meta->root_page_id = new_root_page_id;
+            meta->height++;
+            break;
+        }
+
+        current_page_id = ancestor_stack[--ancestor_size];
+        if (btree_read_node(fd, current_page_id, &parent) != 0 || parent.type != BTREE_INTERNAL) {
+            return -1;
+        }
+
+        if (parent.n_keys < BTREE_ORDER) {
+            internal_insert_sorted(&parent, separator_key, right_page_id);
+            if (btree_write_node(fd, current_page_id, &parent) != 0) {
+                return -1;
+            }
+            break;
+        }
+
+        {
+            BTreeNode right;
+            int temp_keys[BTREE_ORDER + 1];
+            int temp_children[BTREE_ORDER + 2];
+            int insert_index;
+            int right_internal_page_id;
+            int mid = BTREE_ORDER / 2;
+
+            memset(&right, 0, sizeof(right));
+            right.type = BTREE_INTERNAL;
+            right.next_leaf = -1;
+
+            insert_index = 0;
+            while (insert_index < parent.n_keys && parent.keys[insert_index] < separator_key) {
+                insert_index++;
+            }
+
+            for (int i = 0, j = 0; i < BTREE_ORDER + 1; i++) {
+                if (i == insert_index) {
+                    temp_keys[i] = separator_key;
+                } else {
+                    temp_keys[i] = parent.keys[j];
+                    j++;
+                }
+            }
+
+            for (int i = 0; i <= BTREE_ORDER + 1; i++) {
+                if (i <= insert_index) {
+                    temp_children[i] = parent.children[i];
+                } else if (i == insert_index + 1) {
+                    temp_children[i] = right_page_id;
+                } else {
+                    temp_children[i] = parent.children[i - 1];
+                }
+            }
+
+            memset(parent.keys, 0, sizeof(parent.keys));
+            memset(parent.children, 0, sizeof(parent.children));
+            parent.n_keys = mid;
+            for (int i = 0; i < mid; i++) {
+                parent.keys[i] = temp_keys[i];
+            }
+            for (int i = 0; i <= mid; i++) {
+                parent.children[i] = temp_children[i];
+            }
+
+            separator_key = temp_keys[mid];
+
+            right.n_keys = BTREE_ORDER - mid;
+            for (int i = 0; i < right.n_keys; i++) {
+                right.keys[i] = temp_keys[mid + 1 + i];
+            }
+            for (int i = 0; i <= right.n_keys; i++) {
+                right.children[i] = temp_children[mid + 1 + i];
+            }
+
+            right_internal_page_id = btree_alloc_page(fd, meta);
+            if (right_internal_page_id < 0) {
+                return -1;
+            }
+
+            if (btree_write_node(fd, current_page_id, &parent) != 0 ||
+                btree_write_node(fd, right_internal_page_id, &right) != 0) {
+                return -1;
+            }
+
+            left_page_id = current_page_id;
+            right_page_id = right_internal_page_id;
+        }
+    }
+
+    meta->n_entries++;
+    if (btree_write_meta(fd, meta) != 0) {
+        return -1;
+    }
+
+    return 0;
 }
