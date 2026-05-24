@@ -718,3 +718,4 @@ Future versions may add:
 | v1.5 | 2026-04 | SCAN row lines include RowID — format changed from `<size>` to `<row_id> <size>`. Add UPDATE with HOT update support via SLOT_REDIRECT chains |
 | v1.6 | 2026-05 | Add TRACE_START, TRACE_STOP, TRACE_CLEAR — generic trace mode for OPT offline feeding, workload reproduction and access pattern analysis |
 | v1.7 | 2026-05 | Enrich TRACE_STOP with per-event frame snapshots, eviction metadata and pool-size header for cache inspection playback |
+| v1.8 | 2026-05 | Add `INDEX_LOOKUP <table> <key>` — returns `ROW_ID <row_id>` or `NOT_FOUND` for indexed primary-key lookups |

@@ -8,6 +8,85 @@
 #include "../storage-engine/schema.h"
 #include "../storage-engine/trace.h"
 
+static int extract_int_column_from_row(const Schema *schema, const char *row_data,
+                                       int row_size, int column_index, int *value_out) {
+    int null_bitmap_size;
+    int offset;
+
+    if (!schema || !row_data || row_size < 0 || !value_out ||
+        column_index < 0 || column_index >= schema->num_columns) {
+        return -1;
+    }
+
+    null_bitmap_size = (schema->num_columns + 7) / 8;
+    if (row_size < null_bitmap_size) {
+        return -1;
+    }
+
+    offset = null_bitmap_size;
+
+    for (int i = 0; i < schema->num_columns; i++) {
+        const ColumnDef *col = &schema->columns[i];
+
+        if (((unsigned char)row_data[i / 8] & (1u << (i % 8))) != 0) {
+            if (i == column_index) {
+                return -1;
+            }
+            continue;
+        }
+
+        switch (col->type) {
+            case TYPE_INT: {
+                int value;
+
+                if (offset + 4 > row_size) {
+                    return -1;
+                }
+
+                memcpy(&value, row_data + offset, sizeof(int));
+                if (i == column_index) {
+                    *value_out = value;
+                    return 0;
+                }
+
+                offset += 4;
+                break;
+            }
+            case TYPE_FLOAT:
+                if (offset + 4 > row_size) {
+                    return -1;
+                }
+                offset += 4;
+                break;
+            case TYPE_BOOLEAN:
+                if (offset + 1 > row_size) {
+                    return -1;
+                }
+                offset += 1;
+                break;
+            case TYPE_VARCHAR: {
+                unsigned short len;
+
+                if (offset + 2 > row_size) {
+                    return -1;
+                }
+
+                memcpy(&len, row_data + offset, 2);
+                offset += 2;
+                if (offset + (int)len > row_size) {
+                    return -1;
+                }
+                offset += (int)len;
+                break;
+            }
+            default:
+                return -1;
+        }
+    }
+
+    return -1;
+}
+
 // ============================================================================
 // Internal helper: append metrics footer to response
 // ============================================================================
@@ -61,6 +140,9 @@ void handler_dispatch(Server *srv, int client_fd, Request *req) {
             break;
         case OP_TRACE_CLEAR:
             handler_trace_clear(srv, client_fd);
+            break;
+        case OP_INDEX_LOOKUP:
+            handler_index_lookup(srv, client_fd, req);
             break;
         case OP_UNKNOWN:
         default: {
@@ -377,6 +459,15 @@ void handler_create(Server *srv, int client_fd, Request *req) {
         return;
     }
 
+    if (schema_has_index(&schema) && index_manager_open(&srv->im, req->table_name) != 0) {
+        protocol_response_append(&rb, "ERR IO_ERROR failed to create index\n");
+        append_metrics(&rb, srv);
+        protocol_response_append(&rb, "END\n");
+        protocol_response_send(&rb, client_fd);
+        protocol_response_free(&rb);
+        return;
+    }
+
     // Success
     char created_line[128];
     snprintf(created_line, sizeof(created_line),
@@ -390,6 +481,8 @@ void handler_create(Server *srv, int client_fd, Request *req) {
 
 void handler_insert(Server *srv, int client_fd, Request *req) {
     ResponseBuf rb;
+    Schema schema;
+    IndexHandle *handle;
     protocol_response_init(&rb);
 
     if (req->table_name[0] == '\0') {
@@ -419,9 +512,47 @@ void handler_insert(Server *srv, int client_fd, Request *req) {
         return;
     }
 
-    int row_id = heap_insert_bm(srv->data_dir, req->table_name,
-                                req->payload, req->payload_size,
-                                &srv->bm);
+    if (schema_load(&schema, req->table_name, srv->data_dir) != 0) {
+        protocol_response_append(&rb, "ERR IO_ERROR failed to load schema\n");
+        append_metrics(&rb, srv);
+        protocol_response_append(&rb, "END\n");
+        protocol_response_send(&rb, client_fd);
+        protocol_response_free(&rb);
+        return;
+    }
+
+    if (schema_has_index(&schema)) {
+        int pk_column = schema_get_pk_column(&schema);
+        int pk_value;
+
+        if (index_manager_get(&srv->im, req->table_name) == NULL &&
+            index_manager_open(&srv->im, req->table_name) != 0) {
+            protocol_response_append(&rb, "ERR IO_ERROR failed to open index\n");
+            append_metrics(&rb, srv);
+            protocol_response_append(&rb, "END\n");
+            protocol_response_send(&rb, client_fd);
+            protocol_response_free(&rb);
+            return;
+        }
+
+        handle = index_manager_get(&srv->im, req->table_name);
+        if (pk_column >= 0 && handle && schema.columns[pk_column].type == TYPE_INT &&
+            extract_int_column_from_row(&schema, req->payload, req->payload_size,
+                                        pk_column, &pk_value) == 0 &&
+            btree_search(handle->fd, &handle->meta, pk_value) >= 0) {
+            protocol_response_append(&rb, "ERR DUPLICATE_KEY duplicate primary key\n");
+            append_metrics(&rb, srv);
+            protocol_response_append(&rb, "END\n");
+            protocol_response_send(&rb, client_fd);
+            protocol_response_free(&rb);
+            return;
+        }
+    }
+
+    int row_id = heap_insert_bm_indexed(srv->data_dir, req->table_name,
+                                        &schema,
+                                        req->payload, req->payload_size,
+                                        &srv->bm, &srv->im);
 
     if (row_id < 0) {
         protocol_response_append(&rb, "ERR IO_ERROR failed to insert row\n");
@@ -499,8 +630,31 @@ void handler_delete(Server *srv, int client_fd, Request *req) {
         }
     }
 
+    if (schema_has_index(&schema) &&
+        index_manager_get(&srv->im, req->table_name) == NULL &&
+        index_manager_open(&srv->im, req->table_name) != 0) {
+        protocol_response_append(&rb, "ERR IO_ERROR failed to open index\n");
+        append_metrics(&rb, srv);
+        protocol_response_append(&rb, "END\n");
+        protocol_response_send(&rb, client_fd);
+        protocol_response_free(&rb);
+        return;
+    }
+
     int deleted = 0;
     int num_pages = get_num_pages(srv->data_dir, req->table_name);
+    int capacity = 32;
+    int n_row_ids = 0;
+    int *row_ids = malloc(sizeof(int) * capacity);
+
+    if (!row_ids) {
+        protocol_response_append(&rb, "ERR IO_ERROR out of memory\n");
+        append_metrics(&rb, srv);
+        protocol_response_append(&rb, "END\n");
+        protocol_response_send(&rb, client_fd);
+        protocol_response_free(&rb);
+        return;
+    }
 
     for (int page_id = 1; page_id < num_pages; page_id++) {
         char *page = bm_fetch_page(&srv->bm, req->table_name, page_id);
@@ -508,7 +662,6 @@ void handler_delete(Server *srv, int client_fd, Request *req) {
 
         PageHeader *header   = (PageHeader *)page;
         SlotEntry  *slot_dir = (SlotEntry *)(page + sizeof(PageHeader));
-        int         dirty    = 0;
 
         for (int slot = 0; slot < header->num_slots; slot++) {
             if (slot_dir[slot].state == SLOT_DELETED) continue;
@@ -561,14 +714,40 @@ void handler_delete(Server *srv, int client_fd, Request *req) {
             }
 
             if (match) {
-                delete_row(page, slot);
-                deleted++;
-                dirty = 1;
+                if (n_row_ids == capacity) {
+                    int *tmp;
+
+                    capacity *= 2;
+                    tmp = realloc(row_ids, sizeof(int) * capacity);
+                    if (!tmp) {
+                        bm_unpin_page(&srv->bm, req->table_name, page_id, 0);
+                        free(row_ids);
+                        protocol_response_append(&rb, "ERR IO_ERROR out of memory\n");
+                        append_metrics(&rb, srv);
+                        protocol_response_append(&rb, "END\n");
+                        protocol_response_send(&rb, client_fd);
+                        protocol_response_free(&rb);
+                        return;
+                    }
+
+                    row_ids = tmp;
+                }
+
+                row_ids[n_row_ids++] = encode_rowid(page_id, slot);
             }
         }
 
-        bm_unpin_page(&srv->bm, req->table_name, page_id, dirty);
+        bm_unpin_page(&srv->bm, req->table_name, page_id, 0);
     }
+
+    for (int i = 0; i < n_row_ids; i++) {
+        if (heap_delete_row_bm(srv->data_dir, req->table_name, &schema,
+                               row_ids[i], &srv->bm, &srv->im) == 0) {
+            deleted++;
+        }
+    }
+
+    free(row_ids);
 
     char deleted_line[64];
     snprintf(deleted_line, sizeof(deleted_line), "OK\nDELETED %d\n", deleted);
@@ -838,6 +1017,62 @@ void handler_trace_clear(Server *srv, int client_fd) {
     trace_clear(srv->trace);
     protocol_response_append(&rb, "OK\n");
     protocol_response_append(&rb, "TRACE_CLEARED\n");
+    append_metrics(&rb, srv);
+    protocol_response_append(&rb, "END\n");
+    protocol_response_send(&rb, client_fd);
+    protocol_response_free(&rb);
+}
+
+void handler_index_lookup(Server *srv, int client_fd, Request *req) {
+    ResponseBuf rb;
+    IndexHandle *handle;
+    Schema schema;
+    int key;
+    int row_id;
+
+    protocol_response_init(&rb);
+
+    if (req->table_name[0] == '\0' || req->args[0] == '\0') {
+        protocol_response_append(&rb, "ERR INVALID_ARGS missing table or key\n");
+        append_metrics(&rb, srv);
+        protocol_response_append(&rb, "END\n");
+        protocol_response_send(&rb, client_fd);
+        protocol_response_free(&rb);
+        return;
+    }
+
+    handle = index_manager_get(&srv->im, req->table_name);
+    if (!handle &&
+        schema_load(&schema, req->table_name, srv->data_dir) == 0 &&
+        schema_has_index(&schema) &&
+        index_manager_open(&srv->im, req->table_name) == 0) {
+        handle = index_manager_get(&srv->im, req->table_name);
+    }
+
+    if (!handle) {
+        char line[160];
+
+        snprintf(line, sizeof(line), "ERR ERROR no index for table %s\n", req->table_name);
+        protocol_response_append(&rb, line);
+        append_metrics(&rb, srv);
+        protocol_response_append(&rb, "END\n");
+        protocol_response_send(&rb, client_fd);
+        protocol_response_free(&rb);
+        return;
+    }
+
+    key = atoi(req->args);
+    row_id = btree_search(handle->fd, &handle->meta, key);
+
+    protocol_response_append(&rb, "OK\n");
+    if (row_id < 0) {
+        protocol_response_append(&rb, "NOT_FOUND\n");
+    } else {
+        char line[64];
+
+        snprintf(line, sizeof(line), "ROW_ID %d\n", row_id);
+        protocol_response_append(&rb, line);
+    }
     append_metrics(&rb, srv);
     protocol_response_append(&rb, "END\n");
     protocol_response_send(&rb, client_fd);

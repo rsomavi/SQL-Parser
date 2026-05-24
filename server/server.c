@@ -117,6 +117,7 @@ int server_init(Server *srv, const char *data_dir,
     srv->data_dir[255] = '\0';
     srv->running   = 0;
     srv->client_fd = -1;
+    index_manager_init(&srv->im, data_dir);
 
     // Allocate trace buffer and link it into the buffer manager
     srv->trace = malloc(sizeof(Trace));
@@ -242,6 +243,7 @@ void server_stop(Server *srv) {
 void server_destroy(Server *srv) {
     if (!srv) return;
     bm_destroy(&srv->bm);
+    index_manager_close_all(&srv->im);
     if (srv->client_fd >= 0) close(srv->client_fd);
     if (srv->listen_fd >= 0) close(srv->listen_fd);
     srv->client_fd = -1;

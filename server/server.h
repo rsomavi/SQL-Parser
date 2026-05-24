@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include "../storage-engine/buffer_manager.h"
+#include "../storage-engine/index_manager.h"
 
 // ============================================================================
 // Constants
@@ -22,6 +23,7 @@ typedef struct {
     int            listen_fd;      // listening socket
     int            client_fd;      // current client socket (v1: single connection)
     BufferManager  bm;             // buffer manager — owns the buffer pool
+    IndexManager   im;             // open B+ tree indexes by table
     int            running;        // 1 while server is running, 0 to stop
     char           data_dir[256];  // directory where .db files are stored
     Trace         *trace;          // heap-allocated trace buffer (owned by server)

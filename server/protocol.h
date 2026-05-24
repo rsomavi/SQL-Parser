@@ -4,7 +4,7 @@
 #include <stddef.h>
 
 // ============================================================================
-// Operation types
+// Operation types — protocol v1.8
 // ============================================================================
 
 typedef enum {
@@ -19,6 +19,7 @@ typedef enum {
     OP_TRACE_START,
     OP_TRACE_STOP,
     OP_TRACE_CLEAR,
+    OP_INDEX_LOOKUP,
     OP_UNKNOWN
 } OperationType;
 

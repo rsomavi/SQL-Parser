@@ -37,5 +37,6 @@ void handler_update(Server *srv, int client_fd, Request *req);
 void handler_trace_start(Server *srv, int client_fd);
 void handler_trace_stop (Server *srv, int client_fd);
 void handler_trace_clear(Server *srv, int client_fd);
+void handler_index_lookup(Server *srv, int client_fd, Request *req);
 
 #endif

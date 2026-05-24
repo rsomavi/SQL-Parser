@@ -120,6 +120,13 @@ int protocol_read_request(int client_fd, Request *req) {
     } else if (strcmp(line, "TRACE_CLEAR") == 0) {
         req->op = OP_TRACE_CLEAR;
         return 0;
+    } else if (strncmp(line, "INDEX_LOOKUP ", 13) == 0) {
+        req->op = OP_INDEX_LOOKUP;
+        req->table_name[0] = '\0';
+        req->args[0] = '\0';
+
+        sscanf(line + 13, "%63s %1023s", req->table_name, req->args);
+        return 0;
     } else if (strncmp(line, "UPDATE ", 7) == 0) { // UPDATE <table_name> <row_id> <payload_size>\n
         req->op            = OP_UPDATE;             // <binary serialized row>
         req->table_name[0] = '\0';

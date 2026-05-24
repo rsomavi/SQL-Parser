@@ -17,6 +17,8 @@ STORAGE_OBJS = \
     $(STORAGE)/page.o \
     $(STORAGE)/disk.o \
     $(STORAGE)/schema.o \
+    $(STORAGE)/btree.o \
+    $(STORAGE)/index_manager.o \
     $(STORAGE)/trace.o
 
 # Server object files
@@ -75,6 +77,12 @@ $(STORAGE)/disk.o: $(STORAGE)/disk.c
 
 $(STORAGE)/schema.o: $(STORAGE)/schema.c
 	$(CC) $(CFLAGS) -c $(STORAGE)/schema.c -o $(STORAGE)/schema.o
+
+$(STORAGE)/btree.o: $(STORAGE)/btree.c
+	$(CC) $(CFLAGS) -c $(STORAGE)/btree.c -o $(STORAGE)/btree.o
+
+$(STORAGE)/index_manager.o: $(STORAGE)/index_manager.c
+	$(CC) $(CFLAGS) -c $(STORAGE)/index_manager.c -o $(STORAGE)/index_manager.o
 
 $(STORAGE)/trace.o: $(STORAGE)/trace.c $(STORAGE)/trace.h
 	$(CC) $(CFLAGS) -c $(STORAGE)/trace.c -o $(STORAGE)/trace.o
