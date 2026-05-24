@@ -4,6 +4,10 @@
 #include "page.h"
 #include "disk.h"
 #include "buffer_manager.h"
+#include "schema.h"
+#include "index_manager.h"
+
+typedef int RowID;
 
 // RowID encoding/decoding helpers
 static inline int encode_rowid(int page_id, int slot_id) {
@@ -37,10 +41,18 @@ int scan_table_raw(const char *data_dir, const char *table,
 int heap_insert_bm(const char *data_dir, const char *table_name,
                    const void *data, int size, BufferManager *bm);
 
+int heap_insert_bm_indexed(const char *data_dir, const char *table_name,
+                           const Schema *schema, const void *data, int size,
+                           BufferManager *bm, IndexManager *im);
+
 int heap_delete_bm(const char *data_dir, const char *table_name,
                    BufferManager *bm,
                    int (*predicate)(const char *row, int size, void *ctx),
                    void *ctx);
+
+int heap_delete_row_bm(const char *data_dir, const char *table_name,
+                       const Schema *schema, RowID row_id, BufferManager *bm,
+                       IndexManager *im);
                    
 void debug_print_table(const char *data_dir, const char *table);
 

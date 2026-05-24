@@ -546,3 +546,65 @@ int btree_insert(int fd, BTreeMeta *meta, int key, int row_id) {
 
     return 0;
 }
+
+int btree_delete(int fd, BTreeMeta *meta, int key) {
+    BTreeNode node;
+    int current_page_id;
+
+    if (fd < 0 || meta == NULL || meta->root_page_id <= 0 || meta->key_type != BTREE_KEY_TYPE_INT) {
+        return -1;
+    }
+
+    current_page_id = meta->root_page_id;
+
+    while (1) {
+        int index;
+
+        if (btree_read_node(fd, current_page_id, &node) != 0) {
+            return -1;
+        }
+
+        if (node.type == BTREE_LEAF) {
+            break;
+        }
+
+        if (node.type != BTREE_INTERNAL) {
+            return -1;
+        }
+
+        index = 0;
+        while (index < node.n_keys && key >= node.keys[index]) {
+            index++;
+        }
+
+        current_page_id = node.children[index];
+        if (current_page_id <= 0) {
+            return -1;
+        }
+    }
+
+    for (int i = 0; i < node.n_keys; i++) {
+        if (node.keys[i] == key) {
+            for (int j = i; j < node.n_keys - 1; j++) {
+                node.keys[j] = node.keys[j + 1];
+                node.row_ids[j] = node.row_ids[j + 1];
+            }
+
+            node.keys[node.n_keys - 1] = 0;
+            node.row_ids[node.n_keys - 1] = 0;
+            node.n_keys--;
+
+            if (meta->n_entries > 0) {
+                meta->n_entries--;
+            }
+
+            if (btree_write_node(fd, current_page_id, &node) != 0 || btree_write_meta(fd, meta) != 0) {
+                return -1;
+            }
+
+            return 0;
+        }
+    }
+
+    return -1;
+}

@@ -6,7 +6,8 @@ SRC    = ..
 BM_SRCS = $(SRC)/buffer_manager.c $(SRC)/buffer_frame.c \
           $(SRC)/page_table.c $(SRC)/eviction_policy.c $(SRC)/trace.c
 
-BASE_SRCS = $(SRC)/disk.c $(SRC)/page.c $(SRC)/heap.c $(SRC)/schema.c
+BASE_SRCS = $(SRC)/disk.c $(SRC)/page.c $(SRC)/heap.c $(SRC)/schema.c \
+            $(SRC)/btree.c $(SRC)/index_manager.c
 
 ALL_SRCS = $(BASE_SRCS) $(BM_SRCS)
 
@@ -56,7 +57,7 @@ test_eviction_policy: test_eviction_policy.c $(SRC)/eviction_policy.c \
 test_buffer_manager: test_buffer_manager.c $(ALL_SRCS)
 	$(CC) $(CFLAGS) -o $@ $^
 
-test_btree: test_btree.c $(SRC)/btree.c $(SRC)/disk.c
+test_btree: test_btree.c $(ALL_SRCS)
 	$(CC) $(CFLAGS) -o $@ $^
 
 run: all

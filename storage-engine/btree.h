@@ -35,5 +35,6 @@ int btree_alloc_page(int fd, BTreeMeta *meta);
 int btree_init(const char *data_dir, const char *table_name);
 int btree_search(int fd, const BTreeMeta *meta, int key);
 int btree_insert(int fd, BTreeMeta *meta, int key, int row_id);
+int btree_delete(int fd, BTreeMeta *meta, int key);
 
 #endif /* BTREE_H */

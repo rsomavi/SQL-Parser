@@ -340,6 +340,24 @@ int schema_get_column_index(const Schema *schema, const char *col_name) {
     return -1;
 }
 
+int schema_has_index(const TableSchema *schema) {
+    return schema_get_pk_column(schema) >= 0 ? 1 : 0;
+}
+
+int schema_get_pk_column(const TableSchema *schema) {
+    if (!schema) {
+        return -1;
+    }
+
+    for (int i = 0; i < schema->num_columns; i++) {
+        if (schema->columns[i].is_primary_key) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
 void schema_print(const Schema *schema) {
     if (!schema) {
         printf("Schema: NULL\n");

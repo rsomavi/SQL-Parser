@@ -32,6 +32,8 @@ typedef struct {
     ColumnDef columns[MAX_COLUMNS];
 } Schema;
 
+typedef Schema TableSchema;
+
 // ============================================================================
 // Schema Serialization/Deserialization
 // ============================================================================
@@ -69,6 +71,12 @@ int row_deserialize(const Schema *schema, const char *buf, int buf_size, void **
 
 // Return column index by name or -1 if not found
 int schema_get_column_index(const Schema *schema, const char *col_name);
+
+// Returns 1 if the table has a PRIMARY KEY column, 0 otherwise.
+int schema_has_index(const TableSchema *schema);
+
+// Returns the column index of the PRIMARY KEY column, or -1 if none.
+int schema_get_pk_column(const TableSchema *schema);
 
 // Print schema to stdout for debugging
 void schema_print(const Schema *schema);
